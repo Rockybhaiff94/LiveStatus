@@ -1,0 +1,62 @@
+# ==============================================================================
+# LiveStatus - Self-Contained Minecraft Paper Plugin Configuration
+# ==============================================================================
+
+youtube:
+  # Google Cloud OAuth 2.0 Credentials (Web Application)
+  # You can specify directly or reference environment variables using ${ENV_VAR}
+  client-id: "${YOUTUBE_CLIENT_ID}"
+  client-secret: "${YOUTUBE_CLIENT_SECRET}"
+  # The exact redirect URI configured in your Google Cloud Console.
+  # Example: "http://localhost:8080/oauth/callback" or "https://stream.yourserver.com/oauth/callback"
+  redirect-uri: "${YOUTUBE_REDIRECT_URI:http://localhost:8080/oauth/callback}"
+  # Local port for the plugin's embedded OAuth callback receiver.
+  # If -1, automatically parses the port from redirect-uri.
+  callback-port: 8080
+  # Network interface host to bind the callback receiver ("0.0.0.0" for all interfaces).
+  callback-host: "0.0.0.0"
+  # Maximum time to wait for YouTube API HTTP responses (in milliseconds).
+  request-timeout-ms: 5000
+  # Secret key used for HMAC-SHA256 OAuth CSRF state protection.
+  state-secret: "${STATE_SECRET:livestatus_secure_random_seed}"
+
+polling:
+  # How often the plugin queries YouTube for active stream updates (in seconds).
+  # Status checks are executed completely asynchronously and never block the main server thread.
+  interval-seconds: 30
+
+nametag:
+  # Whether the in-game nametag modifier is enabled.
+  enabled: true
+  # Provider strategy:
+  # - "team": Uses native scoreboard teams (preserves existing prefix/suffix non-destructively).
+  # - "placeholder": Relies solely on PlaceholderAPI for plugins like TAB / NameTagEdit.
+  # - "composite": Uses teams and updates PAPI placeholders simultaneously.
+  provider: "team"
+  # Text to append when the player is streaming Minecraft live on YouTube.
+  live-text: "LIVE"
+  # MiniMessage formatted text for Adventure-supported nametag renderers.
+  live-format: "<red><bold>LIVE</bold></red>"
+  # Separator between existing nametag and the LIVE indicator.
+  separator: " "
+
+detection:
+  # Whether the YouTube stream must be in categoryId 20 ("Gaming").
+  require-gaming-category: true
+  # Whether the stream must specifically be verified as Minecraft via official YouTube topic details.
+  require-minecraft: true
+  # Optional fallback to check stream title for "minecraft" if topic metadata is delayed.
+  allow-title-fallback: false
+
+security:
+  # If YouTube API fails or is unreachable, remove LIVE indicator for safety.
+  fail-closed: true
+
+compatibility:
+  # Enable PlaceholderAPI expansion (%livestatus_*%) if PlaceholderAPI is installed.
+  placeholderapi: true
+
+debug:
+  # Enable detailed debug logging in server console.
+  # Secrets, tokens, and authorization codes are NEVER logged even with debug enabled.
+  enabled: false
