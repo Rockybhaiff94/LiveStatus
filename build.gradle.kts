@@ -8,11 +8,11 @@ description = "Adds a LIVE indicator to an authorized player's nametag when stre
 
 val paperVersion = project.findProperty("paperVersion") as? String ?: "1.21.4-R0.1-SNAPSHOT"
 
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(21))
-    }
-}
+// java {
+//     toolchain {
+//         languageVersion.set(JavaLanguageVersion.of(21))
+//     }
+// }
 
 repositories {
     mavenCentral()

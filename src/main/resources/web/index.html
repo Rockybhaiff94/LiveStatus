@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiveStatus Web Control Panel</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <span class="live-dot"></span>
+                <h2>LiveStatus</h2>
+                <span class="badge-tag">ADMIN</span>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="dashboard">
+                    <span class="nav-icon">📊</span> Dashboard
+                </button>
+                <button class="nav-item" data-tab="youtubers">
+                    <span class="nav-icon">📹</span> YouTubers
+                </button>
+                <button class="nav-item" data-tab="history">
+                    <span class="nav-icon">📜</span> Live History
+                </button>
+                <button class="nav-item" data-tab="links">
+                    <span class="nav-icon">🔗</span> Server Links
+                </button>
+                <button class="nav-item" data-tab="announcements">
+                    <span class="nav-icon">📢</span> Announcements
+                </button>
+                <button class="nav-item" data-tab="premium">
+                    <span class="nav-icon">⭐</span> Premium
+                </button>
+                <button class="nav-item" data-tab="settings">
+                    <span class="nav-icon">⚙️</span> Settings
+                </button>
+                <button class="nav-item" data-tab="audit">
+                    <span class="nav-icon">🛡️</span> Security & Audit
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="session-info">
+                    <span class="status-indicator online"></span>
+                    <span>Server: <strong id="server-status-text">Online</strong></span>
+                </div>
+                <button id="btn-logout" class="btn-sm btn-danger">Revoke Session</button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="topbar-title">
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="topbar-actions">
+                    <span id="refresh-indicator" class="text-muted">Auto-refreshed</span>
+                    <button id="btn-refresh" class="btn-sm btn-secondary">Refresh</button>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <!-- TAB: DASHBOARD -->
+                <section id="tab-dashboard" class="tab-pane active">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-title">TOTAL YOUTUBERS</div>
+                            <div class="metric-value" id="stat-total-youtubers">0</div>
+                            <div class="metric-sub">Linked YouTube accounts</div>
+                        </div>
+                        <div class="metric-card highlight-live">
+                            <div class="metric-title">CURRENTLY LIVE</div>
+                            <div class="metric-value text-live" id="stat-currently-live">0</div>
+                            <div class="metric-sub">Active Minecraft streams</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">TOTAL LIVE EVENTS</div>
+                            <div class="metric-value" id="stat-total-events">0</div>
+                            <div class="metric-sub">Historical recorded sessions</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">SERVER LINK JOINS</div>
+                            <div class="metric-value" id="stat-total-joins">0</div>
+                            <div class="metric-sub">Total tracked referral joins</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">PREMIUM SUBSCRIBERS</div>
+                            <div class="metric-value text-gold" id="stat-premium-users">0</div>
+                            <div class="metric-sub">Active licenses</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">SERVER STATUS</div>
+                            <div class="metric-value text-success">ONLINE</div>
+                            <div class="metric-sub" id="stat-online-players">0 players online</div>
+                        </div>
+                    </div>
+
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h3>Recent Live Broadcasts</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Player</th>
+                                        <th>YouTube Channel</th>
+                                        <th>Stream Title</th>
+                                        <th>Started At</th>
+                                        <th>Ended At</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dashboard-recent-table">
+                                    <tr><td colspan="7" class="text-center">Loading live events...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: YOUTUBERS -->
+                <section id="tab-youtubers" class="tab-pane">
+                    <div class="section-header-actions">
+                        <h3>Linked YouTube Streamers</h3>
+                        <button id="btn-allow-player" class="btn btn-primary">+ Authorize New Player</button>
+                    </div>
+                    <div class="section-card">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Minecraft Player</th>
+                                        <th>YouTube Channel</th>
+                                        <th>Channel ID</th>
+                                        <th>Status</th>
+                                        <th>Sessions</th>
+                                        <th>Total Live Time</th>
+                                        <th>Last Live</th>
+                                        <th>Premium</th>
+                                        <th>Announce</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="youtubers-table">
+                                    <tr><td colspan="10" class="text-center">Loading YouTubers...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: LIVE HISTORY -->
+                <section id="tab-history" class="tab-pane">
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h3>Complete Live Event History</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Player</th>
+                                        <th>Channel</th>
+                                        <th>Video ID</th>
+                                        <th>Stream Title</th>
+                                        <th>Started</th>
+                                        <th>Ended</th>
+                                        <th>Duration</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table">
+                                    <tr><td colspan="8" class="text-center">Loading history...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: SERVER LINKS -->
+                <section id="tab-links" class="tab-pane">
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-title">JOINS TODAY</div>
+                            <div class="metric-value" id="stat-joins-today">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">JOINS THIS WEEK</div>
+                            <div class="metric-value" id="stat-joins-week">0</div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-title">JOINS THIS MONTH</div>
+                            <div class="metric-value" id="stat-joins-month">0</div>
+                        </div>
+                    </div>
+
+                    <div class="section-header-actions mt-20">
+                        <h3>Configured Referral Links</h3>
+                        <button id="btn-create-link" class="btn btn-primary">+ Create Referral Link</button>
+                    </div>
+                    <div class="section-card">
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Identifier</th>
+                                        <th>Label</th>
+                                        <th>Target IP / Host</th>
+                                        <th>Clicks</th>
+                                        <th>Joins</th>
+                                        <th>Public Link</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="links-table">
+                                    <tr><td colspan="6" class="text-center">Loading links...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="section-card mt-20">
+                        <div class="section-card-header">
+                            <h3>Recent Referral Joins</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Player</th>
+                                        <th>UUID</th>
+                                        <th>Join Time</th>
+                                        <th>Referral Source</th>
+                                        <th>Link ID</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="joins-table">
+                                    <tr><td colspan="5" class="text-center">Loading joins...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: ANNOUNCEMENTS -->
+                <section id="tab-announcements" class="tab-pane">
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h3>In-Game Live Chat Announcement Settings</h3>
+                        </div>
+                        <form id="announcements-form" class="form-grid">
+                            <div class="form-group">
+                                <label for="setting-adminChatEnabled">Master Chat Announcements</label>
+                                <label class="switch">
+                                    <input type="checkbox" id="setting-adminChatEnabled" title="Master Chat Announcements" aria-label="Master Chat Announcements">
+                                    <span class="slider round"></span>
+                                </label>
+                                <span class="help-text">Global server-wide toggle for YouTube live chat announcements.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-globalMinimumGapSeconds">Global Anti-Spam Minimum Gap (seconds)</label>
+                                <input type="number" id="setting-globalMinimumGapSeconds" min="10" max="600" class="form-control" title="Global Anti-Spam Minimum Gap (seconds)" placeholder="60">
+                                <span class="help-text">Minimum delay between ANY two announcements server-wide.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-defaultIntervalMinutes">Default Streamer Interval (minutes)</label>
+                                <input type="number" id="setting-defaultIntervalMinutes" min="5" max="1440" class="form-control" title="Default Streamer Interval (minutes)" placeholder="30">
+                                <span class="help-text">Re-announcement cooldown for streamers using default interval.</span>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Announcement Settings</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- TAB: PREMIUM -->
+                <section id="tab-premium" class="tab-pane">
+                    <div class="card-columns">
+                        <!-- Redeem Code Card -->
+                        <div class="section-card">
+                            <div class="section-card-header">
+                                <h3>Redeem Premium Code</h3>
+                            </div>
+                            <form id="redeem-code-form">
+                                <div class="form-group">
+                                    <label for="redeem-player-name">Minecraft Username</label>
+                                    <input type="text" id="redeem-player-name" class="form-control" title="Minecraft Username" placeholder="e.g. Steve" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="redeem-code">Premium Code</label>
+                                    <input type="text" id="redeem-code" class="form-control" title="Premium Code" placeholder="YT-LIVE-PREM-XXXX-XXXX" required>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Redeem Code</button>
+                            </form>
+                            <div id="redeem-result" class="alert-box"></div>
+                        </div>
+
+                        <!-- Buy Premium Card -->
+                        <div class="section-card">
+                            <div class="section-card-header">
+                                <h3>Purchase Premium Subscription</h3>
+                            </div>
+                            <p class="text-muted mb-15">
+                                Processed securely through our payment gateway. Requires verified server-to-server webhook confirmation before activation.
+                            </p>
+                            <form id="purchase-form">
+                                <div class="form-group">
+                                    <label for="purchase-player-name">Minecraft Username</label>
+                                    <input type="text" id="purchase-player-name" class="form-control" title="Minecraft Username" placeholder="e.g. Steve" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="purchase-tier">Select Plan</label>
+                                    <select id="purchase-tier" class="form-control" title="Select Subscription Plan" aria-label="Select Subscription Plan">
+                                        <option value="PRO_MONTHLY">PRO Tier - Monthly ($4.99)</option>
+                                        <option value="PRO_YEARLY">PRO Tier - Yearly ($39.99)</option>
+                                        <option value="LIFETIME">PRO Tier - Lifetime ($79.99)</option>
+                                    </select>
+                                </div>
+                                <button type="submit" class="btn btn-gold">Proceed to Secure Checkout</button>
+                            </form>
+                            <div id="purchase-result" class="alert-box"></div>
+                        </div>
+                    </div>
+
+                    <div class="section-card mt-20">
+                        <div class="section-card-header">
+                            <h3>Active Premium Licenses</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Player</th>
+                                        <th>UUID</th>
+                                        <th>Tier</th>
+                                        <th>Activated</th>
+                                        <th>Expires</th>
+                                        <th>Method</th>
+                                        <th>Reference ID</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="premium-table">
+                                    <tr><td colspan="8" class="text-center">Loading premium users...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB: SETTINGS -->
+                <section id="tab-settings" class="tab-pane">
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h3>General Plugin Configuration</h3>
+                        </div>
+                        <form id="settings-form" class="form-grid">
+                            <div class="form-group">
+                                <label for="setting-youtubeClientId">YouTube Client ID</label>
+                                <input type="text" id="setting-youtubeClientId" class="form-control" title="YouTube Client ID" placeholder="YouTube Client ID" readonly>
+                                <span class="help-text">Managed via config.yml / environment variables.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-youtubeClientSecret">YouTube Client Secret</label>
+                                <input type="text" id="setting-youtubeClientSecret" class="form-control" title="YouTube Client Secret" placeholder="••••••••" readonly>
+                                <span class="help-text">Masked for security.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-liveText">Live Indicator Text</label>
+                                <input type="text" id="setting-liveText" class="form-control" title="Live Indicator Text" placeholder="LIVE">
+                                <span class="help-text">Appended to nametag (e.g. LIVE).</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-liveFormat">MiniMessage Live Format</label>
+                                <input type="text" id="setting-liveFormat" class="form-control" title="MiniMessage Live Format" placeholder="<red><bold>LIVE</bold></red>">
+                                <span class="help-text">Color formatting (e.g. &lt;red&gt;&lt;bold&gt;LIVE&lt;/bold&gt;&lt;/red&gt;).</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="setting-pollingIntervalSeconds">Polling Cycle Interval (seconds)</label>
+                                <input type="number" id="setting-pollingIntervalSeconds" min="15" max="300" class="form-control" title="Polling Cycle Interval (seconds)" placeholder="60">
+                                <span class="help-text">How often YouTube API is checked asynchronously.</span>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Save Settings</button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+
+                <!-- TAB: SECURITY & AUDIT -->
+                <section id="tab-audit" class="tab-pane">
+                    <div class="section-card">
+                        <div class="section-card-header">
+                            <h3>Security & Audit Log</h3>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Timestamp</th>
+                                        <th>Actor</th>
+                                        <th>IP Address</th>
+                                        <th>Action</th>
+                                        <th>Target</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-table">
+                                    <tr><td colspan="6" class="text-center">Loading audit log...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-allow-player" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4>Authorize Minecraft Streamer</h4>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="modal-player-name">Minecraft Username</label>
+                    <input type="text" id="modal-player-name" class="form-control" title="Minecraft Username" placeholder="PlayerName">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-btn-confirm-allow" class="btn btn-primary">Authorize Player</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-create-link" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4>Create Referral Link</h4>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="modal-link-id">Link Identifier (Slug)</label>
+                    <input type="text" id="modal-link-id" class="form-control" title="Link Identifier (Slug)" placeholder="e.g. youtube-promo">
+                </div>
+                <div class="form-group">
+                    <label for="modal-link-label">Label</label>
+                    <input type="text" id="modal-link-label" class="form-control" title="Label" placeholder="e.g. YouTube Video Promo Link">
+                </div>
+                <div class="form-group">
+                    <label for="modal-link-target">Target Server Address (IP or Host)</label>
+                    <input type="text" id="modal-link-target" class="form-control" title="Target Server Address" placeholder="e.g. play.myserver.com">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-btn-confirm-link" class="btn btn-primary">Create Link</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden session token placeholder injected by WebServerManager -->
+    <script>
+        window.PANEL_SESSION_TOKEN = "{{SESSION_TOKEN}}";
+    </script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -9,16 +9,37 @@ softdepend:
 
 commands:
   youtube:
-    description: LiveStatus administrative commands
-    permission: livestatus.admin
-    usage: /youtube <allow-link|revoke-link|status|reload|help> [player]
+    description: LiveStatus and YouTube Live stream commands
+    usage: /youtube <chat|allow-link|revoke-link|status|unlink|reload|panel|help>
     aliases: [yt, livestatus]
+  ytlive:
+    description: LiveStatus Web Control Panel and administration commands
+    permission: ytlive.admin
+    usage: /ytlive <panel [revoke]|status|reload|help>
+    aliases: [ytpanel, ytlivepanel]
   link:
     description: Link or unlink your YouTube account
     permission: livestatus.link
     usage: /link <youtube> [unlink]
 
 permissions:
+  ytlive.admin:
+    description: Grants full administrative access to LiveStatus and Web Panel
+    default: op
+    children:
+      ytlive.panel: true
+      ytlive.premium.manage: true
+      ytlive.settings: true
+      livestatus.admin: true
+  ytlive.panel:
+    description: Allows generating temporary Web Control Panel links
+    default: op
+  ytlive.premium.manage:
+    description: Allows managing premium users and redeeming codes
+    default: op
+  ytlive.settings:
+    description: Allows configuring plugin settings via command or web panel
+    default: op
   livestatus.admin:
     description: Grants access to all administrative commands
     default: op
@@ -36,3 +57,24 @@ permissions:
     description: Backwards compatibility alias for livestatus.link
     children:
       livestatus.link: true
+  youtubelivetag.chat:
+    description: Allows an authorized streamer to configure their own live announcements
+    default: true
+  livestatus.chat:
+    description: Alias for youtubelivetag.chat
+    children:
+      youtubelivetag.chat: true
+  youtubelivetag.chat.admin:
+    description: Allows administrators to configure other streamers and global settings
+    default: op
+  livestatus.chat.admin:
+    description: Alias for youtubelivetag.chat.admin
+    children:
+      youtubelivetag.chat.admin: true
+  youtubelivetag.chat.bypass:
+    description: Optional permission allowing a player to avoid receiving automatic announcements
+    default: false
+  livestatus.chat.bypass:
+    description: Alias for youtubelivetag.chat.bypass
+    children:
+      youtubelivetag.chat.bypass: true

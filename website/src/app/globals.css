@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #080808;
+  --color-bg-secondary: #111111;
+  --color-bg-card: #0d0d0d;
+  --color-accent: #FF7A00;
+  --color-accent-hover: #FF9500;
+  --color-accent-glow: rgba(255, 122, 0, 0.15);
+  --color-accent-glow-strong: rgba(255, 122, 0, 0.3);
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #A3A3A3;
+  --color-border: #262626;
+  --color-border-accent: rgba(255, 122, 0, 0.3);
+  --color-live-red: #EF4444;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ---------- Base ---------- */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--color-accent);
+  color: #000;
+}
+
+/* ---------- Animations ---------- */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .55; transform: scale(1.35); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-pulse-dot  { animation: pulse-dot 1.8s ease-in-out infinite; }
+.animate-fade-in-up { animation: fade-in-up .6s ease-out both; }
+.animate-float      { animation: float 3s ease-in-out infinite; }
+
+/* ---------- Utility ---------- */
+.glow-border {
+  box-shadow: 0 0 0 1px var(--color-border), 0 0 20px var(--color-accent-glow);
+}

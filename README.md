@@ -30,8 +30,9 @@ When the stream ends or switches to another game (e.g. GTA V, Fortnite, or Just 
 * **Single Self-Contained JAR**: Drop `plugins/LiveStatus-1.0.0.jar` into your Paper server. The Minecraft server acts as its own OAuth callback receiver and API monitor.
 * **No Client Mods Required**: Operates 100% server-side on standard Paper servers using the official Paper API.
 * **Non-Destructive Suffix Layer**: Preserves all existing nametag prefixes, suffixes, scoreboard teams, and display names set by plugins like LuckPerms, EssentialsX, TAB, or NameTagEdit.
-* **Zero Main-Thread Blocking**: All YouTube API queries, Google token refreshes, and disk operations execute asynchronously. Nametag changes are scheduled onto the main server thread safely.
-* **Fail-Closed Security**: If YouTube or network connections fail, the LIVE tag is suppressed to prevent stale false-positive indicators.
+* **Centralized Live Stream Chat Announcements**: Rich clickable Adventure messages broadcasting live streams with fair randomized rotation, independent cooldowns, global anti-spam protection, and full admin enforcement.
+* **Zero Main-Thread Blocking**: All YouTube API queries, Google token refreshes, and disk operations execute asynchronously. Nametag and chat changes are scheduled onto the main server thread safely.
+* **Fail-Closed Security**: If YouTube or network connections fail, the LIVE tag and announcements are suppressed to prevent stale false-positive indicators.
 
 ---
 
@@ -70,10 +71,21 @@ LiveStatus/
     │   │   │   ├── GoogleOAuthClient.java   # Token exchange & refresh client
     │   │   │   ├── OAuthCallbackServer.java # Embedded HTTP server for OAuth callback
     │   │   │   └── OAuthService.java        # In-game OAuth flow orchestrator
+    │   │   ├── chat/
+    │   │   │   ├── IntervalMode.java        # CUSTOM, DEFAULT, RANDOM modes
+    │   │   │   ├── StreamerChatSettings.java # Per-streamer persistent configuration
+    │   │   │   ├── AnnouncementState.java   # Ephemeral stream state & cooldown tracking
+    │   │   │   ├── LiveStreamState.java     # Aggregated live state model
+    │   │   │   ├── AnnouncementFormatter.java # Adventure MiniMessage sanitizer & formatter
+    │   │   │   ├── AnnouncementScheduler.java # Centralized repeating Bukkit scheduler
+    │   │   │   └── LiveAnnouncementManager.java # Fair randomized selection & rotation engine
+    │   │   ├── stats/
+    │   │   │   └── PluginStatistics.java    # Session & daily announcement metrics
     │   │   ├── storage/
     │   │   │   ├── AccountRecord.java       # Linked account record
     │   │   │   ├── AccountStorage.java      # Storage interface
-    │   │   │   └── JsonAccountStorage.java  # Atomic JSON persistence (linked-accounts.json)
+    │   │   │   ├── JsonAccountStorage.java  # Atomic JSON persistence (linked-accounts.json)
+    │   │   │   └── StreamerConfigStore.java # Persistent YAML streamer settings (streamer-settings.yml)
     │   │   ├── nametag/
     │   │   │   ├── NametagProvider.java     # Nametag provider abstraction
     │   │   │   ├── PaperTeamNametagProvider.java # Non-destructive Scoreboard team manager
@@ -94,6 +106,10 @@ LiveStatus/
     │       ├── plugin.yml                   # Paper plugin descriptor
     │       └── config.yml                   # Default configuration
     └── test/java/com/example/livestatus/
+        ├── LiveStreamAnnouncementTest.java  # Chat announcement & fair rotation tests
+        ├── StreamerConfigStoreTest.java     # YAML persistence & UUID preservation tests
+        ├── YoutubeCommandTest.java          # In-game streamer & admin command tests
+        ├── PluginStatisticsTest.java        # Session & daily metric tracking tests
         ├── OAuthStateManagerTest.java       # CSRF protection & token binding tests
         ├── TokenPersistenceTest.java        # Token storage & server restart tests
         ├── MinecraftLiveDetectionTest.java  # Minecraft & non-gaming stream tests
@@ -210,7 +226,7 @@ debug:
 
 ## In-Game Commands & Permissions
 
-### Administrator Commands (`livestatus.admin`)
+### Administrator Commands (`livestatus.admin` or `youtubelivetag.chat.admin`)
 - `/youtube allow-link <player>` (alias: `/livestatus allow-link`): Authorizes a player to connect their YouTube channel.
 - `/youtube revoke-link <player>`: Revokes linking authorization.
 - `/youtube status <player>`: Displays connection state, channel title, active broadcast, and stream title.
@@ -218,9 +234,33 @@ debug:
 - `/youtube reload`: Reloads `config.yml`, `allowed-players.yml`, and storage without restarting the server.
 - `/youtube help`: Shows command help.
 
+#### Chat Announcement Admin Commands (`youtubelivetag.chat.admin` / `livestatus.chat.admin`):
+- `/youtube chat admin status`: Displays global scheduler diagnostics, eligible streamers, active livestreams, and statistics.
+- `/youtube chat admin on`: Globally enables chat announcements server-wide.
+- `/youtube chat admin off`: Globally disables chat announcements server-wide.
+- `/youtube chat admin enable <player>`: Enables announcements for a specific streamer.
+- `/youtube chat admin disable <player>`: Administratively disables announcements for a specific streamer (overriding player settings).
+- `/youtube chat admin interval <player> <minutes|random>`: Overrides a streamer's announcement cooldown.
+- `/youtube chat admin title <player> <text>`: Overrides a streamer's custom announcement text.
+- `/youtube chat admin title clear <player>`: Clears a streamer's custom title (restores YouTube stream title).
+
+### Streamer Commands (`youtubelivetag.chat` / `livestatus.chat`)
+Authorized and linked streamers can manage their own automated broadcast announcements:
+- `/youtube chat` / `/youtube chat status`: Displays your current announcement status, cooldown mode, interval, and custom title.
+- `/youtube chat on`: Enables your chat announcements.
+- `/youtube chat off`: Disables your chat announcements (unless restricted by admin `streamer-can-disable: false`).
+- `/youtube chat title <text>`: Sets a custom announcement message (sanitized against injection).
+- `/youtube chat title clear`: Restores dynamic YouTube live stream title fallback.
+- `/youtube chat interval <minutes>`: Sets a custom minimum cooldown interval between announcements (respects server minimum).
+- `/youtube chat interval random`: Configures a random interval between each announcement (between server-configured min/max).
+- `/youtube chat interval default`: Resets cooldown interval to the server default.
+
 ### Player Commands (`livestatus.link`)
 - `/link youtube`: Generates a one-time OAuth link to connect YouTube (requires admin authorization).
 - `/link youtube unlink`: Unlinks the player's connected account.
+
+### Optional Permissions
+- `youtubelivetag.chat.bypass` (alias: `livestatus.chat.bypass`): Optional permission allowing staff or specific players to bypass receiving automated live announcements.
 
 ---
 

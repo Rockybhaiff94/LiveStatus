@@ -56,7 +56,71 @@ compatibility:
   # Enable PlaceholderAPI expansion (%livestatus_*%) if PlaceholderAPI is installed.
   placeholderapi: true
 
+chat:
+  # Master toggle for automatic YouTube Live stream chat announcements.
+  enabled: true
+  # Global minimum gap in seconds between ANY two announcements on the server to prevent chat spam.
+  global-minimum-gap-seconds: 60
+  # Default re-announcement interval in minutes for streamers using DEFAULT interval mode.
+  default-interval-minutes: 15
+  # Minimum allowed re-announcement interval in minutes configurable by streamers.
+  minimum-interval-minutes: 5
+  # Maximum allowed re-announcement interval in minutes.
+  maximum-interval-minutes: 1440
+  # Whether authorized streamers who are offline on the Minecraft server can be announced if streaming live.
+  announce-offline-streamers: true
+  # Settings for RANDOM interval mode.
+  random:
+    enabled: true
+    minimum-minutes: 5
+    maximum-minutes: 60
+  # Announcement message lines formatted with Adventure MiniMessage.
+  # Available placeholders: <streamer>, <player>, <title>, <custom_title>, <url>, <video_id>, <game>
+  message:
+    - "<red>●</red> <white><streamer> is <red>LIVE!</red>"
+    - "<gray><title></gray>"
+    - "<click:open_url:'<url>'><hover:show_text:'<gray>Click to watch on YouTube</gray>'><aqua><bold>[WATCH STREAM]</bold></aqua></hover></click>"
+  admin:
+    chat:
+      # Global administrator switch for live announcements.
+      enabled: true
+      # If false, streamers cannot disable announcements with /youtube chat off.
+      streamer-can-disable: true
+
 debug:
   # Enable detailed debug logging in server console.
   # Secrets, tokens, and authorization codes are NEVER logged even with debug enabled.
   enabled: false
+
+web:
+  # Whether the server-hosted administrative Web Control Panel is enabled.
+  # Starts and stops automatically with the Minecraft Paper server.
+  enabled: true
+  # Host IP address to bind the web server ("0.0.0.0" for all network interfaces).
+  host: "0.0.0.0"
+  # Port for the web control panel. Ensure this port is open in your server firewall / NAT forwarding.
+  port: 8765
+  # Duration in hours before temporary panel access links automatically expire.
+  # Options: 1, 5, 24 (Default: 5). Does NOT delete plugin data or premium when expired.
+  link-expiration-hours: 5
+  # Security configuration
+  security:
+    rate-limit: true
+    max-login-attempts: 5
+  # Optional HTTPS / SSL TLS Keystore configuration
+  ssl:
+    enabled: false
+    keystore-path: ""
+    keystore-password: ""
+
+premium:
+  # Enable premium subscription and code redemption system.
+  enabled: true
+  features:
+    custom-live-text: true
+    custom-live-icon: true
+
+payment:
+  # HMAC-SHA256 Webhook signing secret for server-to-server payment gateway notifications.
+  webhook-secret: "${PAYMENT_WEBHOOK_SECRET:}"
+

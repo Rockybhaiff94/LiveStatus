@@ -38,6 +38,40 @@ public class PluginConfig {
     private final boolean placeholderApiEnabled;
     private final boolean debugEnabled;
 
+    // Chat Announcement Configuration
+    private final boolean chatEnabled;
+    private final int globalMinimumGapSeconds;
+    private final int defaultIntervalMinutes;
+    private final int minimumIntervalMinutes;
+    private final int maximumIntervalMinutes;
+    private final boolean announceOfflineStreamers;
+    private final boolean randomIntervalEnabled;
+    private final int randomMinimumMinutes;
+    private final int randomMaximumMinutes;
+    private final java.util.List<String> announcementMessageLines;
+    private volatile boolean adminChatEnabled;
+    private final boolean streamerCanDisable;
+
+    // Web Control Panel Configuration
+    private final boolean webEnabled;
+    private final String webHost;
+    private final int webPort;
+    private final int webLinkExpirationHours;
+    private final boolean webSslEnabled;
+    private final String webSslKeystorePath;
+    private final String webSslKeystorePassword;
+
+    // Premium & Payment Configuration
+    private final boolean premiumEnabled;
+    private final String paymentWebhookSecret;
+
+    // Dynamically updatable settings
+    private volatile String liveTextMutable;
+    private volatile String liveFormatMutable;
+    private volatile int pollingIntervalSecondsMutable;
+    private volatile int globalMinimumGapSecondsMutable;
+    private volatile int defaultIntervalMinutesMutable;
+
     public PluginConfig(FileConfiguration config) {
         this.clientId = resolveEnv(config.getString("youtube.client-id", ""));
         this.clientSecret = resolveEnv(config.getString("youtube.client-secret", ""));
@@ -59,11 +93,14 @@ public class PluginConfig {
         this.callbackPort = port;
 
         this.pollingIntervalSeconds = Math.max(5, config.getInt("polling.interval-seconds", 30));
+        this.pollingIntervalSecondsMutable = this.pollingIntervalSeconds;
 
         this.nametagEnabled = config.getBoolean("nametag.enabled", true);
         this.nametagProvider = config.getString("nametag.provider", "team").toLowerCase();
         this.liveText = config.getString("nametag.live-text", "LIVE");
+        this.liveTextMutable = this.liveText;
         this.liveFormat = config.getString("nametag.live-format", "<red><bold>LIVE</bold></red>");
+        this.liveFormatMutable = this.liveFormat;
         this.separator = config.getString("nametag.separator", " ");
 
         this.requireGamingCategory = config.getBoolean("detection.require-gaming-category", true);
@@ -74,6 +111,48 @@ public class PluginConfig {
 
         this.placeholderApiEnabled = config.getBoolean("compatibility.placeholderapi", true);
         this.debugEnabled = config.getBoolean("debug.enabled", false);
+
+        // Chat announcement parsing
+        this.chatEnabled = config.getBoolean("chat.enabled", true);
+        this.globalMinimumGapSeconds = Math.max(5, config.getInt("chat.global-minimum-gap-seconds", 60));
+        this.globalMinimumGapSecondsMutable = this.globalMinimumGapSeconds;
+        this.minimumIntervalMinutes = Math.max(1, config.getInt("chat.minimum-interval-minutes", 5));
+        this.maximumIntervalMinutes = Math.max(this.minimumIntervalMinutes, config.getInt("chat.maximum-interval-minutes", 1440));
+        int defInt = config.getInt("chat.default-interval-minutes", 15);
+        this.defaultIntervalMinutes = Math.max(this.minimumIntervalMinutes, Math.min(this.maximumIntervalMinutes, defInt));
+        this.defaultIntervalMinutesMutable = this.defaultIntervalMinutes;
+        this.announceOfflineStreamers = config.getBoolean("chat.announce-offline-streamers", true);
+
+        this.randomIntervalEnabled = config.getBoolean("chat.random.enabled", true);
+        this.randomMinimumMinutes = Math.max(1, config.getInt("chat.random.minimum-minutes", 5));
+        this.randomMaximumMinutes = Math.max(this.randomMinimumMinutes, config.getInt("chat.random.maximum-minutes", 60));
+
+        java.util.List<String> msgLines = config.getStringList("chat.message");
+        if (msgLines.isEmpty()) {
+            this.announcementMessageLines = java.util.List.of(
+                    "<red>●</red> <white><streamer> is <red>LIVE!</red>",
+                    "<gray><title></gray>",
+                    "<click:open_url:'<url>'><hover:show_text:'<gray>Click to watch on YouTube</gray>'><aqua><bold>[WATCH STREAM]</bold></aqua></hover></click>"
+            );
+        } else {
+            this.announcementMessageLines = java.util.List.copyOf(msgLines);
+        }
+
+        this.adminChatEnabled = config.getBoolean("chat.admin.chat.enabled", true);
+        this.streamerCanDisable = config.getBoolean("chat.admin.streamer-can-disable", true);
+
+        // Web Panel configuration
+        this.webEnabled = config.getBoolean("web.enabled", true);
+        this.webHost = config.getString("web.host", "0.0.0.0");
+        this.webPort = config.getInt("web.port", 8765);
+        this.webLinkExpirationHours = Math.max(1, config.getInt("web.link-expiration-hours", 5));
+        this.webSslEnabled = config.getBoolean("web.ssl.enabled", false);
+        this.webSslKeystorePath = config.getString("web.ssl.keystore-path", "");
+        this.webSslKeystorePassword = config.getString("web.ssl.keystore-password", "");
+
+        // Premium and Payment
+        this.premiumEnabled = config.getBoolean("premium.enabled", true);
+        this.paymentWebhookSecret = resolveEnv(config.getString("payment.webhook-secret", ""));
     }
 
     private static String resolveEnv(String input) {
@@ -123,7 +202,7 @@ public class PluginConfig {
     }
 
     public int getPollingIntervalSeconds() {
-        return pollingIntervalSeconds;
+        return pollingIntervalSecondsMutable > 0 ? pollingIntervalSecondsMutable : pollingIntervalSeconds;
     }
 
     public boolean isNametagEnabled() {
@@ -135,11 +214,11 @@ public class PluginConfig {
     }
 
     public String getLiveText() {
-        return liveText;
+        return liveTextMutable != null ? liveTextMutable : liveText;
     }
 
     public String getLiveFormat() {
-        return liveFormat;
+        return liveFormatMutable != null ? liveFormatMutable : liveFormat;
     }
 
     public String getSeparator() {
@@ -173,5 +252,124 @@ public class PluginConfig {
     public boolean isOAuthConfigured() {
         return clientId != null && !clientId.isBlank() && clientSecret != null && !clientSecret.isBlank();
     }
+
+    public boolean isChatEnabled() {
+        return chatEnabled;
+    }
+
+    public int getGlobalMinimumGapSeconds() {
+        return globalMinimumGapSecondsMutable > 0 ? globalMinimumGapSecondsMutable : globalMinimumGapSeconds;
+    }
+
+    public int getDefaultIntervalMinutes() {
+        return defaultIntervalMinutesMutable > 0 ? defaultIntervalMinutesMutable : defaultIntervalMinutes;
+    }
+
+    public int getMinimumIntervalMinutes() {
+        return minimumIntervalMinutes;
+    }
+
+    public int getMaximumIntervalMinutes() {
+        return maximumIntervalMinutes;
+    }
+
+    public boolean isAnnounceOfflineStreamers() {
+        return announceOfflineStreamers;
+    }
+
+    public boolean isRandomIntervalEnabled() {
+        return randomIntervalEnabled;
+    }
+
+    public int getRandomMinimumMinutes() {
+        return randomMinimumMinutes;
+    }
+
+    public int getRandomMaximumMinutes() {
+        return randomMaximumMinutes;
+    }
+
+    public java.util.List<String> getAnnouncementMessageLines() {
+        return announcementMessageLines;
+    }
+
+    public boolean isAdminChatEnabled() {
+        return adminChatEnabled;
+    }
+
+    public void setAdminChatEnabled(boolean adminChatEnabled) {
+        this.adminChatEnabled = adminChatEnabled;
+    }
+
+    public boolean isStreamerCanDisable() {
+        return streamerCanDisable;
+    }
+
+    public boolean isWebEnabled() {
+        return webEnabled;
+    }
+
+    public String getWebHost() {
+        return webHost;
+    }
+
+    public int getWebPort() {
+        return webPort;
+    }
+
+    public int getWebLinkExpirationHours() {
+        return webLinkExpirationHours;
+    }
+
+    public boolean isWebSslEnabled() {
+        return webSslEnabled;
+    }
+
+    public String getWebSslKeystorePath() {
+        return webSslKeystorePath;
+    }
+
+    public String getWebSslKeystorePassword() {
+        return webSslKeystorePassword;
+    }
+
+    public boolean isPremiumEnabled() {
+        return premiumEnabled;
+    }
+
+    public String getPaymentWebhookSecret() {
+        return paymentWebhookSecret;
+    }
+
+    public void setLiveText(String liveText) {
+        if (liveText != null && !liveText.isBlank()) {
+            this.liveTextMutable = liveText;
+        }
+    }
+
+    public void setLiveFormat(String liveFormat) {
+        if (liveFormat != null && !liveFormat.isBlank()) {
+            this.liveFormatMutable = liveFormat;
+        }
+    }
+
+    public void setPollingIntervalSeconds(int seconds) {
+        if (seconds >= 5) {
+            this.pollingIntervalSecondsMutable = seconds;
+        }
+    }
+
+    public void setGlobalMinimumGapSeconds(int seconds) {
+        if (seconds >= 5) {
+            this.globalMinimumGapSecondsMutable = seconds;
+        }
+    }
+
+    public void setDefaultIntervalMinutes(int minutes) {
+        if (minutes >= 1) {
+            this.defaultIntervalMinutesMutable = minutes;
+        }
+    }
 }
+
 

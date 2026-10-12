@@ -30,7 +30,34 @@ There are two primary user roles:
 | `/youtube reload` | `livestatus.admin` | Safely reloads `config.yml`, `allowed-players.yml`, and storage without interrupting server uptime. |
 | `/youtube help` | `livestatus.admin` | Displays available administrative commands. |
 
-### Player Commands (`/link`)
+### Streamer Chat Announcement Commands (`/youtube chat`)
+
+| Command | Permission | Description |
+|---|---|---|
+| `/youtube chat` | `youtubelivetag.chat` | Displays help for streamer live chat announcement settings. |
+| `/youtube chat status` | `youtubelivetag.chat` | Shows your current announcement settings, cooldown, live stream, and effective title. |
+| `/youtube chat on` | `youtubelivetag.chat` | Enables automatic live stream chat announcements for your streams. |
+| `/youtube chat off` | `youtubelivetag.chat` | Disables announcements for your streams (requires admin permission if forced). |
+| `/youtube chat title <text>` | `youtubelivetag.chat` | Sets a custom announcement message/title displayed when your stream is announced. |
+| `/youtube chat title clear` | `youtubelivetag.chat` | Clears custom announcement title; resumes using dynamic YouTube stream title. |
+| `/youtube chat interval <minutes>` | `youtubelivetag.chat` | Sets a custom re-announcement interval (enforces server minimum and maximum). |
+| `/youtube chat interval random` | `youtubelivetag.chat` | Switches to randomized interval mode (generates a new cooldown after each announcement). |
+| `/youtube chat interval default` | `youtubelivetag.chat` | Resets announcement interval to server default. |
+
+### Administrator Chat Announcement Controls (`/youtube chat admin`)
+
+| Command | Permission | Description |
+|---|---|---|
+| `/youtube chat admin status` | `youtubelivetag.chat.admin` | Displays live statistics: authorized, linked, active streamers, scheduler status, ETA, and sent counts. |
+| `/youtube chat admin on` | `youtubelivetag.chat.admin` | Globally enables the chat announcement system. |
+| `/youtube chat admin off` | `youtubelivetag.chat.admin` | Globally disables all chat announcements on the server. |
+| `/youtube chat admin enable <player>` | `youtubelivetag.chat.admin` | Administratively enables announcements for the specified player. |
+| `/youtube chat admin disable <player>` | `youtubelivetag.chat.admin` | Administratively disables announcements for the specified player (admin override). |
+| `/youtube chat admin interval <player> <minutes\|random\|default>` | `youtubelivetag.chat.admin` | Configures announcement interval mode and cooldown for the specified player. |
+| `/youtube chat admin title <player> <text>` | `youtubelivetag.chat.admin` | Sets custom announcement title for the specified player. |
+| `/youtube chat admin title clear <player>` | `youtubelivetag.chat.admin` | Clears custom announcement title for the specified player. |
+
+### Player Linking Commands (`/link`)
 
 | Command | Permission | Description |
 |---|---|---|
@@ -43,11 +70,16 @@ There are two primary user roles:
 
 | Permission Node | Default | Description |
 |---|---|---|
-| `livestatus.admin` | `op` | Grants access to all `/youtube` and `/livestatus` subcommands. |
+| `livestatus.admin` | `op` | Grants access to all administrative commands. |
+| `youtubelivetag.admin` | `op` | Compatibility alias for `livestatus.admin`. |
 | `livestatus.link` | `true` | Allows execution of `/link youtube` (subject to admin authorization). |
-| `livestatus.bypass` | `false` | Administrative bypass node for future permission overrides. |
-| `youtubelivetag.admin` | `op` | Legacy alias for `livestatus.admin`. |
-| `youtubelivetag.link` | `true` | Legacy alias for `livestatus.link`. |
+| `youtubelivetag.link` | `true` | Compatibility alias for `livestatus.link`. |
+| `youtubelivetag.chat` | `true` | Allows an authorized streamer to configure their own live chat announcements. |
+| `livestatus.chat` | `true` | Alias for `youtubelivetag.chat`. |
+| `youtubelivetag.chat.admin` | `op` | Allows administrators to control global and per-player announcement settings. |
+| `livestatus.chat.admin` | `op` | Alias for `youtubelivetag.chat.admin`. |
+| `youtubelivetag.chat.bypass` | `false` | Players with this permission will not receive automated live chat announcements. |
+| `livestatus.chat.bypass` | `false` | Alias for `youtubelivetag.chat.bypass`. |
 
 ---
 
@@ -104,3 +136,63 @@ If a creator leaves the server staff or creator program:
   ```
   /youtube unlink PokeHowlet
   ```
+
+---
+
+## 5. Live Stream Chat Announcement System
+
+### Overview
+LiveStatus includes a high-performance, centralized live stream chat announcement engine.
+- **Single Centralized Scheduler**: Exactly one repeating task evaluates all eligible streamers.
+- **Zero Additional API Requests**: Reuses the existing YouTube live detection cache.
+- **Fair Randomized Rotation**: If multiple streamers are live, longer-waiting streamers are weighted with higher selection probability, avoiding predictable loops and preventing starvation.
+- **Independent Cooldowns**: Streamer interval timers are independent minimum cooldowns. A long cooldown on one streamer never delays other eligible streamers.
+- **Global Anti-Spam Gap**: Enforces a configurable global gap (default 60 seconds) between any announcements on the server.
+- **New Stream Recognition**: Changing YouTube video ID resets cooldown immediately so new streams are announced right away.
+- **Rich Adventure Clickable Chat**: Displays a clickable `[WATCH STREAM]` button opening the exact verified YouTube URL with hover tooltip.
+- **Injection Protection**: Streamer titles and stream titles are treated strictly as data and cannot inject MiniMessage markup or commands.
+
+### Streamer Workflow
+1. Once authorized and linked, the streamer runs:
+   ```
+   /youtube chat on
+   ```
+2. (Optional) Set a custom title:
+   ```
+   /youtube chat title We are going to dominate this SMP!
+   ```
+3. (Optional) Choose an announcement cooldown mode:
+   ```
+   /youtube chat interval 10         # Custom 10-minute cooldown
+   /youtube chat interval random     # Randomized interval between min and max
+   /youtube chat interval default    # Server default (15 minutes)
+   ```
+4. Check current status:
+   ```
+   /youtube chat status
+   ```
+
+### Administrator Controls
+- Inspect real-time announcement system statistics:
+  ```
+  /youtube chat admin status
+  ```
+- Toggle global announcements on or off:
+  ```
+  /youtube chat admin on
+  /youtube chat admin off
+  ```
+- Force enable or disable a specific player:
+  ```
+  /youtube chat admin enable PokeHowlet
+  /youtube chat admin disable PokeHowlet
+  ```
+- Enforce mandatory announcements:
+  In `config.yml`:
+  ```yaml
+  chat:
+    admin:
+      streamer-can-disable: false
+  ```
+  When set to `false`, players running `/youtube chat off` will be notified that announcements are mandatory.
+

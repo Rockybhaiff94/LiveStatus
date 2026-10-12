@@ -26,6 +26,8 @@ public class LiveStatusScheduler implements Runnable {
     private final PluginConfig config;
     private final YouTubeService youTubeService;
     private final PlayerLinkService linkService;
+    private final com.example.livestatus.player.AllowedPlayersStorage allowedStorage;
+    private final com.example.livestatus.storage.AccountStorage accountStorage;
     private final NametagProvider nametagProvider;
     private final LiveIndicatorRenderer indicatorRenderer;
     private final Logger logger;
@@ -41,10 +43,26 @@ public class LiveStatusScheduler implements Runnable {
             LiveIndicatorRenderer indicatorRenderer,
             Logger logger
     ) {
+        this(plugin, config, youTubeService, linkService, null, null, nametagProvider, indicatorRenderer, logger);
+    }
+
+    public LiveStatusScheduler(
+            Plugin plugin,
+            PluginConfig config,
+            YouTubeService youTubeService,
+            PlayerLinkService linkService,
+            com.example.livestatus.player.AllowedPlayersStorage allowedStorage,
+            com.example.livestatus.storage.AccountStorage accountStorage,
+            NametagProvider nametagProvider,
+            LiveIndicatorRenderer indicatorRenderer,
+            Logger logger
+    ) {
         this.plugin = plugin;
         this.config = config;
         this.youTubeService = youTubeService;
         this.linkService = linkService;
+        this.allowedStorage = allowedStorage;
+        this.accountStorage = accountStorage;
         this.nametagProvider = nametagProvider;
         this.indicatorRenderer = indicatorRenderer;
         this.logger = logger;
@@ -77,16 +95,24 @@ public class LiveStatusScheduler implements Runnable {
 
         try {
             Collection<? extends Player> onlinePlayers = Bukkit.getOnlinePlayers();
-            if (onlinePlayers.isEmpty()) {
-                isPolling.set(false);
-                return;
-            }
-
-            List<UUID> targetUuids = new ArrayList<>();
+            Set<UUID> targetUuids = new LinkedHashSet<>();
             for (Player player : onlinePlayers) {
                 UUID uuid = player.getUniqueId();
                 linkService.getOrCreate(uuid, player.getName());
                 targetUuids.add(uuid);
+            }
+
+            if (config.isAnnounceOfflineStreamers() && allowedStorage != null && accountStorage != null) {
+                for (UUID uuid : allowedStorage.getAllowedUuids()) {
+                    if (accountStorage.findByUuid(uuid).isPresent()) {
+                        targetUuids.add(uuid);
+                    }
+                }
+            }
+
+            if (targetUuids.isEmpty()) {
+                isPolling.set(false);
+                return;
             }
 
             // Query YouTube asynchronously in batch

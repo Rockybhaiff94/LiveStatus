@@ -1,5 +1,8 @@
 package com.example.livestatus;
 
+import com.example.livestatus.chat.AnnouncementFormatter;
+import com.example.livestatus.chat.AnnouncementScheduler;
+import com.example.livestatus.chat.LiveAnnouncementManager;
 import com.example.livestatus.command.LinkYoutubeCommand;
 import com.example.livestatus.command.YoutubeCommand;
 import com.example.livestatus.compatibility.PlaceholderApiHook;
@@ -12,10 +15,22 @@ import com.example.livestatus.oauth.OAuthStateManager;
 import com.example.livestatus.player.AllowedPlayersStorage;
 import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.scheduler.LiveStatusScheduler;
+import com.example.livestatus.stats.PluginStatistics;
 import com.example.livestatus.storage.AccountRecord;
 import com.example.livestatus.storage.AccountStorage;
 import com.example.livestatus.storage.JsonAccountStorage;
+import com.example.livestatus.storage.StreamerConfigStore;
 import com.example.livestatus.youtube.*;
+import com.example.livestatus.history.LiveHistoryStorage;
+import com.example.livestatus.history.LiveHistoryTracker;
+import com.example.livestatus.premium.PaymentWebhookHandler;
+import com.example.livestatus.premium.PremiumService;
+import com.example.livestatus.premium.PremiumStorage;
+import com.example.livestatus.tracker.ServerLinkStorage;
+import com.example.livestatus.tracker.ServerLinkTracker;
+import com.example.livestatus.web.AuditLogger;
+import com.example.livestatus.web.WebSecurityManager;
+import com.example.livestatus.web.WebServerManager;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -27,14 +42,30 @@ import java.util.List;
 
 /**
  * Main self-contained Paper plugin class for LiveStatus.
- * Handles embedded OAuth 2.0 callbacks, token storage, YouTube API queries, and live nametag indicators.
+ * Handles embedded OAuth 2.0 callbacks, token storage, YouTube API queries,
+ * live nametag indicators, and server-hosted Web Control Panel.
  */
 public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     private PluginConfig pluginConfig;
     private AllowedPlayersStorage allowedStorage;
     private AccountStorage accountStorage;
+    private StreamerConfigStore streamerConfigStore;
+    private PluginStatistics statistics;
     private PlayerLinkService linkService;
+
+    // Web Panel & Extended Systems
+    private LiveHistoryStorage liveHistoryStorage;
+    private LiveHistoryTracker liveHistoryTracker;
+    private ServerLinkStorage serverLinkStorage;
+    private ServerLinkTracker serverLinkTracker;
+    private PremiumStorage premiumStorage;
+    private PremiumService premiumService;
+    private PaymentWebhookHandler paymentWebhookHandler;
+    private WebSecurityManager webSecurityManager;
+    private AuditLogger auditLogger;
+    private WebServerManager webServerManager;
+
     private OAuthStateManager stateManager;
     private GoogleOAuthClient oAuthClient;
     private YouTubeApiClient youTubeApiClient;
@@ -45,6 +76,9 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     private OAuthService oAuthService;
     private OAuthCallbackServer callbackServer;
     private LiveStatusScheduler scheduler;
+    private AnnouncementFormatter announcementFormatter;
+    private LiveAnnouncementManager announcementManager;
+    private AnnouncementScheduler announcementScheduler;
     private PlaceholderApiHook placeholderApiHook;
 
     @Override
@@ -55,7 +89,20 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         // 1. Initialize Persistent Storages & Player Link Service
         this.allowedStorage = new AllowedPlayersStorage(getDataFolder(), getLogger());
         this.accountStorage = new JsonAccountStorage(getDataFolder(), getLogger());
+        this.streamerConfigStore = new StreamerConfigStore(getDataFolder(), getLogger());
+        this.statistics = new PluginStatistics();
         this.linkService = new PlayerLinkService(allowedStorage);
+
+        // Extended Systems: History, Server Links, Premium, Web Security & Audit
+        this.liveHistoryStorage = new LiveHistoryStorage(getDataFolder(), getLogger());
+        this.liveHistoryTracker = new LiveHistoryTracker(liveHistoryStorage, getLogger());
+        this.serverLinkStorage = new ServerLinkStorage(getDataFolder(), getLogger());
+        this.serverLinkTracker = new ServerLinkTracker(serverLinkStorage, getLogger());
+        this.premiumStorage = new PremiumStorage(getDataFolder(), getLogger());
+        this.premiumService = new PremiumService(premiumStorage, getLogger());
+        this.paymentWebhookHandler = new PaymentWebhookHandler(premiumService, pluginConfig.getPaymentWebhookSecret(), getLogger());
+        this.webSecurityManager = new WebSecurityManager(getLogger());
+        this.auditLogger = new AuditLogger(getDataFolder(), getLogger());
 
         // Preload stored accounts into in-memory link service
         for (AccountRecord record : accountStorage.getAllAccounts()) {
@@ -111,38 +158,86 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         );
         this.callbackServer.start();
 
-        // 5. Initialize Optional PlaceholderAPI Integration
+        // 5. Initialize Live Chat Announcement System
+        this.announcementFormatter = new AnnouncementFormatter(pluginConfig, getLogger());
+        this.announcementManager = new LiveAnnouncementManager(
+                this,
+                pluginConfig,
+                youTubeService,
+                allowedStorage,
+                accountStorage,
+                streamerConfigStore,
+                announcementFormatter,
+                statistics,
+                getLogger()
+        );
+        this.announcementManager.setHistoryTracker(this.liveHistoryTracker);
+        this.announcementScheduler = new AnnouncementScheduler(this, announcementManager, getLogger());
+
+        // 6. Initialize Server-Hosted Web Control Panel
+        this.webServerManager = new WebServerManager(
+                this,
+                pluginConfig,
+                webSecurityManager,
+                liveHistoryTracker,
+                serverLinkTracker,
+                premiumService,
+                paymentWebhookHandler,
+                auditLogger,
+                getLogger()
+        );
+        this.webServerManager.start();
+
+        // 7. Initialize Optional PlaceholderAPI Integration
         if (pluginConfig.isPlaceholderApiEnabled()) {
             this.placeholderApiHook = new PlaceholderApiHook(linkService, pluginConfig.getLiveText(), getLogger());
             this.placeholderApiHook.register();
         }
 
-        // 6. Register Commands
+        // 7. Register Commands
         registerCommands();
 
-        // 7. Register Event Listeners
+        // 8. Register Event Listeners
         getServer().getPluginManager().registerEvents(this, this);
 
-        // 8. Start Asynchronous Polling Engine
+        // 9. Start Asynchronous Polling Engines
         this.scheduler = new LiveStatusScheduler(
                 this,
                 pluginConfig,
                 youTubeService,
                 linkService,
+                allowedStorage,
+                accountStorage,
                 nametagProvider,
                 indicatorRenderer,
                 getLogger()
         );
         this.scheduler.start();
+        this.announcementScheduler.start();
 
-        // 9. Startup summary
+        // 10. Startup summary
         logStartupSummary();
     }
 
     @Override
     public void onDisable() {
+        if (webServerManager != null) {
+            webServerManager.stop();
+        }
+        if (liveHistoryStorage != null) {
+            liveHistoryStorage.save();
+        }
+        if (serverLinkStorage != null) {
+            serverLinkStorage.save();
+        }
+        if (premiumStorage != null) {
+            premiumStorage.save();
+        }
         if (callbackServer != null) {
             callbackServer.stop();
+        }
+        if (announcementScheduler != null) {
+            announcementScheduler.stop();
         }
         if (scheduler != null) {
             scheduler.stop();
@@ -152,6 +247,9 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         }
         if (placeholderApiHook != null) {
             placeholderApiHook.unregister();
+        }
+        if (streamerConfigStore != null) {
+            streamerConfigStore.save();
         }
         if (linkService != null) {
             linkService.clear();
@@ -177,9 +275,16 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     private void registerCommands() {
         PluginCommand ytCmd = getCommand("youtube");
         if (ytCmd != null) {
-            YoutubeCommand handler = new YoutubeCommand(this, linkService, youTubeService);
+            YoutubeCommand handler = new YoutubeCommand(this, linkService, youTubeService, announcementManager, streamerConfigStore);
             ytCmd.setExecutor(handler);
             ytCmd.setTabCompleter(handler);
+        }
+
+        PluginCommand ytliveCmd = getCommand("ytlive");
+        if (ytliveCmd != null) {
+            YoutubeCommand handler = new YoutubeCommand(this, linkService, youTubeService, announcementManager, streamerConfigStore);
+            ytliveCmd.setExecutor(handler);
+            ytliveCmd.setTabCompleter(handler);
         }
 
         PluginCommand linkCmd = getCommand("link");
@@ -200,6 +305,8 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         getLogger().info("Polling Interval: " + pluginConfig.getPollingIntervalSeconds() + "s");
         getLogger().info("Admin Authorized Players: " + allowedStorage.getAllowedUuids().size());
         getLogger().info("Linked Accounts in Storage: " + accountStorage.getAllAccounts().size());
+        getLogger().info("Chat Announcements: " + (pluginConfig.isChatEnabled() && pluginConfig.isAdminChatEnabled() ? "ENABLED" : "DISABLED") +
+                " (min-gap=" + pluginConfig.getGlobalMinimumGapSeconds() + "s, default=" + pluginConfig.getDefaultIntervalMinutes() + "m)");
         getLogger().info("PlaceholderAPI: " + (placeholderApiHook != null && placeholderApiHook.isHooked() ? "Hooked" : "Not hooked"));
         getLogger().info("==================================================");
     }
@@ -209,6 +316,9 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.pluginConfig = new PluginConfig(getConfig());
         this.allowedStorage.load();
         this.accountStorage.load();
+        if (streamerConfigStore != null) {
+            this.streamerConfigStore.load();
+        }
 
         if (callbackServer != null) {
             callbackServer.stop();
@@ -218,12 +328,19 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         if (scheduler != null) {
             scheduler.start();
         }
+
+        if (announcementScheduler != null) {
+            announcementScheduler.start();
+        }
     }
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         if (scheduler != null) {
             scheduler.checkPlayerImmediate(event.getPlayer());
+        }
+        if (serverLinkTracker != null) {
+            serverLinkTracker.recordJoin(event.getPlayer().getUniqueId(), event.getPlayer().getName(), "default", "direct_join");
         }
     }
 
@@ -242,8 +359,28 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         return linkService;
     }
 
+    public AllowedPlayersStorage getAllowedStorage() {
+        return allowedStorage;
+    }
+
     public AccountStorage getAccountStorage() {
         return accountStorage;
+    }
+
+    public StreamerConfigStore getStreamerConfigStore() {
+        return streamerConfigStore;
+    }
+
+    public LiveAnnouncementManager getAnnouncementManager() {
+        return announcementManager;
+    }
+
+    public AnnouncementScheduler getAnnouncementScheduler() {
+        return announcementScheduler;
+    }
+
+    public PluginStatistics getStatistics() {
+        return statistics;
     }
 
     public YouTubeService getYouTubeService() {
@@ -257,5 +394,34 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     public NametagProvider getNametagProvider() {
         return nametagProvider;
     }
+
+    public WebSecurityManager getWebSecurityManager() {
+        return webSecurityManager;
+    }
+
+    public LiveHistoryTracker getLiveHistoryTracker() {
+        return liveHistoryTracker;
+    }
+
+    public ServerLinkTracker getServerLinkTracker() {
+        return serverLinkTracker;
+    }
+
+    public PremiumService getPremiumService() {
+        return premiumService;
+    }
+
+    public PaymentWebhookHandler getPaymentWebhookHandler() {
+        return paymentWebhookHandler;
+    }
+
+    public AuditLogger getAuditLogger() {
+        return auditLogger;
+    }
+
+    public WebServerManager getWebServerManager() {
+        return webServerManager;
+    }
 }
+
 
