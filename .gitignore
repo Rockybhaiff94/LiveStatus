@@ -29,3 +29,9 @@ Thumbs.db
 # Sensitive local config & test runtime folders #
 run/
 logs/
+.env*
+!.env.example
+client_secret*.json
+node_modules/
+dist/
+.next/

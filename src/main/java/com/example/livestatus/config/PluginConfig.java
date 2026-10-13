@@ -14,6 +14,9 @@ public class PluginConfig {
 
     private static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{([A-Za-z0-9_]+)}");
 
+    private final String mcastApiUrl;
+    private final String mcastWebUrl;
+
     private final String clientId;
     private final String clientSecret;
     private final String redirectUri;
@@ -21,6 +24,7 @@ public class PluginConfig {
     private final String callbackHost;
     private final int requestTimeoutMs;
     private final String stateSecret;
+    private final boolean requireAdminApproval;
 
     private final int pollingIntervalSeconds;
 
@@ -73,11 +77,15 @@ public class PluginConfig {
     private volatile int defaultIntervalMinutesMutable;
 
     public PluginConfig(FileConfiguration config) {
+        this.mcastApiUrl = resolveEnv(config.getString("mcast.api-url", "https://api.mcast.fun"));
+        this.mcastWebUrl = resolveEnv(config.getString("mcast.web-url", "https://mcast.fun"));
+
         this.clientId = resolveEnv(config.getString("youtube.client-id", ""));
         this.clientSecret = resolveEnv(config.getString("youtube.client-secret", ""));
         this.redirectUri = resolveEnv(config.getString("youtube.redirect-uri", "http://localhost:8080/oauth/callback"));
+        this.requireAdminApproval = config.getBoolean("linking.require-admin-approval", true);
         this.callbackHost = config.getString("youtube.callback-host", "0.0.0.0");
-        this.requestTimeoutMs = Math.max(1000, config.getInt("youtube.request-timeout-ms", 5000));
+        this.requestTimeoutMs = Math.max(1000, config.getInt("mcast.request-timeout-ms", config.getInt("youtube.request-timeout-ms", 5000)));
         this.stateSecret = resolveEnv(config.getString("youtube.state-secret", "livestatus_secure_random_seed"));
 
         // Determine callback port: explicit config or parse from redirectUri
@@ -173,6 +181,14 @@ public class PluginConfig {
         return sb.toString();
     }
 
+    public String getMcastApiUrl() {
+        return mcastApiUrl;
+    }
+
+    public String getMcastWebUrl() {
+        return mcastWebUrl;
+    }
+
     public String getClientId() {
         return clientId;
     }
@@ -183,6 +199,10 @@ public class PluginConfig {
 
     public String getRedirectUri() {
         return redirectUri;
+    }
+
+    public boolean isRequireAdminApproval() {
+        return requireAdminApproval;
     }
 
     public int getCallbackPort() {
@@ -249,8 +269,13 @@ public class PluginConfig {
         return debugEnabled;
     }
 
+    /**
+     * Checks if OAuth integration is operational.
+     * In centralized MCast mode, OAuth credentials are managed entirely on api.mcast.fun.
+     */
     public boolean isOAuthConfigured() {
-        return clientId != null && !clientId.isBlank() && clientSecret != null && !clientSecret.isBlank();
+        return (mcastApiUrl != null && !mcastApiUrl.isBlank()) ||
+                (clientId != null && !clientId.isBlank() && clientSecret != null && !clientSecret.isBlank());
     }
 
     public boolean isChatEnabled() {

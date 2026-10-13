@@ -638,10 +638,10 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
 
         youTubeService.checkStatus(target.getUniqueId()).thenAccept(status -> {
             Optional<LinkedPlayer> opt = linkService.get(target.getUniqueId());
-            boolean allowed = linkService.isAuthorizedToLink(target.getUniqueId());
+            boolean allowed = (plugin != null && !plugin.getPluginConfig().isRequireAdminApproval()) || linkService.isAuthorizedToLink(target.getUniqueId());
 
             sender.sendMessage(Component.text("--- LiveStatus: " + targetName + " ---", NamedTextColor.GOLD));
-            sender.sendMessage(Component.text("Admin Authorized: ", NamedTextColor.GRAY)
+            sender.sendMessage(Component.text("Authorized: ", NamedTextColor.GRAY)
                     .append(allowed ? Component.text("YES", NamedTextColor.GREEN) : Component.text("NO", NamedTextColor.RED)));
 
             if (opt.isPresent()) {

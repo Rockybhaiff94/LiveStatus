@@ -1,10 +1,14 @@
 package com.example.livestatus.scheduler;
 
 import com.example.livestatus.config.PluginConfig;
+import com.example.livestatus.mcast.MCastApiClient;
 import com.example.livestatus.nametag.LiveIndicatorRenderer;
 import com.example.livestatus.nametag.NametagProvider;
+import com.example.livestatus.player.AllowedPlayersStorage;
 import com.example.livestatus.player.LinkedPlayer;
 import com.example.livestatus.player.PlayerLinkService;
+import com.example.livestatus.storage.AccountStorage;
+import com.example.livestatus.youtube.YouTubeAccount;
 import com.example.livestatus.youtube.YouTubeService;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -16,18 +20,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Logger;
 
 /**
- * Asynchronous polling engine that checks active YouTube broadcast status
- * and triggers nametag visual updates on the main thread ONLY when status transitions occur.
- * Avoids overlapping polling cycles.
+ * Asynchronous polling engine that checks active live broadcast status
+ * via the centralized MCast API and triggers nametag visual updates on the main thread
+ * ONLY when status transitions occur. Avoids overlapping polling cycles.
  */
 public class LiveStatusScheduler implements Runnable {
 
     private final Plugin plugin;
     private final PluginConfig config;
+    private final MCastApiClient mcastApiClient;
     private final YouTubeService youTubeService;
     private final PlayerLinkService linkService;
-    private final com.example.livestatus.player.AllowedPlayersStorage allowedStorage;
-    private final com.example.livestatus.storage.AccountStorage accountStorage;
     private final NametagProvider nametagProvider;
     private final LiveIndicatorRenderer indicatorRenderer;
     private final Logger logger;
@@ -37,35 +40,40 @@ public class LiveStatusScheduler implements Runnable {
     public LiveStatusScheduler(
             Plugin plugin,
             PluginConfig config,
+            MCastApiClient mcastApiClient,
             YouTubeService youTubeService,
             PlayerLinkService linkService,
-            NametagProvider nametagProvider,
-            LiveIndicatorRenderer indicatorRenderer,
-            Logger logger
-    ) {
-        this(plugin, config, youTubeService, linkService, null, null, nametagProvider, indicatorRenderer, logger);
-    }
-
-    public LiveStatusScheduler(
-            Plugin plugin,
-            PluginConfig config,
-            YouTubeService youTubeService,
-            PlayerLinkService linkService,
-            com.example.livestatus.player.AllowedPlayersStorage allowedStorage,
-            com.example.livestatus.storage.AccountStorage accountStorage,
+            AllowedPlayersStorage allowedStorage,
+            AccountStorage accountStorage,
             NametagProvider nametagProvider,
             LiveIndicatorRenderer indicatorRenderer,
             Logger logger
     ) {
         this.plugin = plugin;
         this.config = config;
+        this.mcastApiClient = mcastApiClient;
         this.youTubeService = youTubeService;
         this.linkService = linkService;
-        this.allowedStorage = allowedStorage;
-        this.accountStorage = accountStorage;
         this.nametagProvider = nametagProvider;
         this.indicatorRenderer = indicatorRenderer;
         this.logger = logger;
+    }
+
+    /**
+     * Backward-compatible constructor for testing.
+     */
+    public LiveStatusScheduler(
+            Plugin plugin,
+            PluginConfig config,
+            YouTubeService youTubeService,
+            PlayerLinkService linkService,
+            AllowedPlayersStorage allowedStorage,
+            AccountStorage accountStorage,
+            NametagProvider nametagProvider,
+            LiveIndicatorRenderer indicatorRenderer,
+            Logger logger
+    ) {
+        this(plugin, config, null, youTubeService, linkService, allowedStorage, accountStorage, nametagProvider, indicatorRenderer, logger);
     }
 
     public synchronized void start() {
@@ -88,7 +96,7 @@ public class LiveStatusScheduler implements Runnable {
         // Prevent overlapping polling executions
         if (!isPolling.compareAndSet(false, true)) {
             if (config.isDebugEnabled()) {
-                logger.info("Skipping YouTube polling cycle: previous cycle is still in progress.");
+                logger.info("Skipping polling cycle: previous cycle is still in progress.");
             }
             return;
         }
@@ -98,68 +106,98 @@ public class LiveStatusScheduler implements Runnable {
             Set<UUID> targetUuids = new LinkedHashSet<>();
             for (Player player : onlinePlayers) {
                 UUID uuid = player.getUniqueId();
+                if (config.isRequireAdminApproval() && !linkService.isAuthorizedToLink(uuid)) {
+                    continue; // Skip players not authorized by administrator
+                }
                 linkService.getOrCreate(uuid, player.getName());
                 targetUuids.add(uuid);
             }
 
-            if (config.isAnnounceOfflineStreamers() && allowedStorage != null && accountStorage != null) {
-                for (UUID uuid : allowedStorage.getAllowedUuids()) {
-                    if (accountStorage.findByUuid(uuid).isPresent()) {
-                        targetUuids.add(uuid);
-                    }
-                }
-            }
-
+            // Strictly on-demand: Zero network requests when no authorized players are online
             if (targetUuids.isEmpty()) {
                 isPolling.set(false);
                 return;
             }
 
-            // Query YouTube asynchronously in batch
-            youTubeService.checkBatchStatus(targetUuids)
-                    .thenAccept(results -> {
-                        for (Player player : Bukkit.getOnlinePlayers()) {
-                            UUID uuid = player.getUniqueId();
-                            Optional<LinkedPlayer> optLinked = linkService.get(uuid);
-                            if (optLinked.isEmpty()) {
-                                continue;
-                            }
+            // 1. Centralized MCast batch status check
+            if (mcastApiClient != null) {
+                mcastApiClient.fetchBatchStatus(targetUuids)
+                        .thenAccept(results -> {
+                            for (Map.Entry<UUID, MCastApiClient.PlayerLiveStatus> entry : results.entrySet()) {
+                                UUID uuid = entry.getKey();
+                                MCastApiClient.PlayerLiveStatus status = entry.getValue();
 
-                            LinkedPlayer linked = optLinked.get();
-                            // Only perform nametag operations if the LIVE eligibility state actually changed!
-                            if (linked.hasVisualIndicatorChanged()) {
-                                boolean nowEligible = linked.getStatus().isLiveIndicatorEligible();
-                                if (config.isDebugEnabled()) {
-                                    logger.info("Player " + player.getName() + " visual state transition: " +
-                                            linked.getPreviousStatus() + " -> " + linked.getStatus() +
-                                            " (eligible=" + nowEligible + ")");
+                                if (status.linked()) {
+                                    YouTubeAccount ytAccount = new YouTubeAccount(status.channelId(), status.channelTitle(), null);
+                                    linkService.updateAccount(uuid, true, ytAccount);
                                 }
-
-                                // Scoreboard modifications must execute on the Minecraft main server thread
-                                Bukkit.getScheduler().runTask(plugin, () -> {
-                                    if (!player.isOnline()) {
-                                        return;
-                                    }
-                                    if (nowEligible) {
-                                        nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
-                                    } else {
-                                        nametagProvider.removeLiveIndicator(player);
-                                    }
-                                });
+                                linkService.updateStatus(uuid, status.status(), null);
                             }
-                        }
-                    })
-                    .exceptionally(ex -> {
-                        if (config.isDebugEnabled()) {
-                            logger.warning("Error during live status polling cycle: " + ex.getMessage());
-                        }
-                        return null;
-                    })
-                    .whenComplete((res, ex) -> isPolling.set(false));
+
+                            syncVisualIndicators();
+                        })
+                        .exceptionally(ex -> {
+                            if (config.isDebugEnabled()) {
+                                logger.warning("Error during MCast live status polling: " + ex.getMessage());
+                            }
+                            return null;
+                        })
+                        .whenComplete((res, ex) -> isPolling.set(false));
+                return;
+            }
+
+            // 2. Legacy fallback if MCast client not configured
+            if (youTubeService != null) {
+                youTubeService.checkBatchStatus(targetUuids)
+                        .thenAccept(results -> syncVisualIndicators())
+                        .exceptionally(ex -> {
+                            if (config.isDebugEnabled()) {
+                                logger.warning("Error during live status polling cycle: " + ex.getMessage());
+                            }
+                            return null;
+                        })
+                        .whenComplete((res, ex) -> isPolling.set(false));
+                return;
+            }
+
+            isPolling.set(false);
         } catch (Throwable t) {
             isPolling.set(false);
             if (config.isDebugEnabled()) {
                 logger.warning("Unexpected error during polling cycle: " + t.getMessage());
+            }
+        }
+    }
+
+    private void syncVisualIndicators() {
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            UUID uuid = player.getUniqueId();
+            Optional<LinkedPlayer> optLinked = linkService.get(uuid);
+            if (optLinked.isEmpty()) {
+                continue;
+            }
+
+            LinkedPlayer linked = optLinked.get();
+            // Only perform nametag operations if the LIVE eligibility state actually changed!
+            if (linked.hasVisualIndicatorChanged()) {
+                boolean nowEligible = linked.getStatus().isLiveIndicatorEligible();
+                if (config.isDebugEnabled()) {
+                    logger.info("Player " + player.getName() + " visual state transition: " +
+                            linked.getPreviousStatus() + " -> " + linked.getStatus() +
+                            " (eligible=" + nowEligible + ")");
+                }
+
+                // Scoreboard modifications must execute on the Minecraft main server thread
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (nowEligible) {
+                        nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+                    } else {
+                        nametagProvider.removeLiveIndicator(player);
+                    }
+                });
             }
         }
     }
@@ -174,16 +212,37 @@ public class LiveStatusScheduler implements Runnable {
         UUID uuid = player.getUniqueId();
         linkService.getOrCreate(uuid, player.getName());
 
-        youTubeService.checkStatus(uuid).thenAccept(status -> {
-            Optional<LinkedPlayer> opt = linkService.get(uuid);
-            if (opt.isPresent() && opt.get().getStatus().isLiveIndicatorEligible()) {
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (player.isOnline()) {
-                        nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+        if (mcastApiClient != null) {
+            mcastApiClient.fetchBatchStatus(List.of(uuid)).thenAccept(results -> {
+                MCastApiClient.PlayerLiveStatus s = results.get(uuid);
+                if (s != null) {
+                    if (s.linked()) {
+                        linkService.updateAccount(uuid, true, new YouTubeAccount(s.channelId(), s.channelTitle(), null));
                     }
-                });
-            }
-        });
+                    linkService.updateStatus(uuid, s.status(), null);
+                    if (s.status().isLiveIndicatorEligible()) {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (player.isOnline()) {
+                                nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+                            }
+                        });
+                    }
+                }
+            });
+            return;
+        }
+
+        if (youTubeService != null) {
+            youTubeService.checkStatus(uuid).thenAccept(status -> {
+                Optional<LinkedPlayer> opt = linkService.get(uuid);
+                if (opt.isPresent() && opt.get().getStatus().isLiveIndicatorEligible()) {
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (player.isOnline()) {
+                            nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+                        }
+                    });
+                }
+            });
+        }
     }
 }
-

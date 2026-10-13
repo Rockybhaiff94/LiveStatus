@@ -58,12 +58,23 @@ export default function Footer() {
           {/* Legal */}
           <div>
             <h3 className="text-sm font-semibold mb-3">Legal</h3>
+            <ul className="space-y-1.5 text-xs text-text-secondary mb-3">
+              <li>
+                <Link href="/privacy" className="hover:text-accent transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link href="/terms" className="hover:text-accent transition-colors">
+                  Terms of Service
+                </Link>
+              </li>
+            </ul>
             <p className="text-xs text-text-secondary leading-relaxed">
               MCast is an independent community project and is not affiliated
-              with, endorsed by, or associated with Mojang Studios, Microsoft
-              Corporation, or Google LLC.
+              with Mojang Studios, Microsoft Corporation, or Google LLC.
             </p>
-            <p className="text-xs text-text-secondary mt-2">
+            <p className="text-xs text-text-secondary mt-1">
               Minecraft is a trademark of Mojang Studios. YouTube is a trademark
               of Google LLC.
             </p>

@@ -7,6 +7,9 @@ import com.example.livestatus.command.LinkYoutubeCommand;
 import com.example.livestatus.command.YoutubeCommand;
 import com.example.livestatus.compatibility.PlaceholderApiHook;
 import com.example.livestatus.config.PluginConfig;
+import com.example.livestatus.mcast.MCastApiClient;
+import com.example.livestatus.mcast.MCastRegistrationService;
+import com.example.livestatus.mcast.MCastServerIdentity;
 import com.example.livestatus.nametag.*;
 import com.example.livestatus.oauth.GoogleOAuthClient;
 import com.example.livestatus.oauth.OAuthCallbackServer;
@@ -66,6 +69,11 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     private AuditLogger auditLogger;
     private WebServerManager webServerManager;
 
+    // MCast Centralized Architecture
+    private MCastServerIdentity serverIdentity;
+    private MCastApiClient mcastApiClient;
+    private MCastRegistrationService registrationService;
+
     private OAuthStateManager stateManager;
     private GoogleOAuthClient oAuthClient;
     private YouTubeApiClient youTubeApiClient;
@@ -88,7 +96,9 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
         // 1. Initialize Persistent Storages & Player Link Service
         this.allowedStorage = new AllowedPlayersStorage(getDataFolder(), getLogger());
-        this.accountStorage = new JsonAccountStorage(getDataFolder(), getLogger());
+        JsonAccountStorage jsonStorage = new JsonAccountStorage(getDataFolder(), getLogger());
+        jsonStorage.sanitizeLegacyTokens();
+        this.accountStorage = jsonStorage;
         this.streamerConfigStore = new StreamerConfigStore(getDataFolder(), getLogger());
         this.statistics = new PluginStatistics();
         this.linkService = new PlayerLinkService(allowedStorage);
@@ -103,6 +113,12 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.paymentWebhookHandler = new PaymentWebhookHandler(premiumService, pluginConfig.getPaymentWebhookSecret(), getLogger());
         this.webSecurityManager = new WebSecurityManager(getLogger());
         this.auditLogger = new AuditLogger(getDataFolder(), getLogger());
+
+        // 1b. Initialize MCast Central Identity & API Client
+        this.serverIdentity = new MCastServerIdentity(getDataFolder(), getLogger());
+        this.mcastApiClient = new MCastApiClient(pluginConfig.getMcastApiUrl(), serverIdentity, getLogger());
+        this.registrationService = new MCastRegistrationService(this, mcastApiClient, getLogger());
+        this.registrationService.start();
 
         // Preload stored accounts into in-memory link service
         for (AccountRecord record : accountStorage.getAllAccounts()) {
@@ -133,11 +149,11 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.indicatorRenderer = new StaticLiveIndicatorRenderer(pluginConfig.getLiveFormat(), pluginConfig.getLiveText());
         this.nametagProvider = createNametagProvider();
 
-        // 4. Initialize OAuth In-Game Service & Embedded Callback Server
+        // 4. Initialize OAuth In-Game Service (Centralized MCast Architecture)
         this.oAuthService = new OAuthService(
+                this,
                 pluginConfig,
-                stateManager,
-                oAuthClient,
+                mcastApiClient,
                 accountStorage,
                 linkService,
                 youTubeService,
@@ -145,18 +161,21 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
                 getLogger()
         );
 
-        this.callbackServer = new OAuthCallbackServer(
-                this,
-                pluginConfig,
-                stateManager,
-                oAuthClient,
-                youTubeApiClient,
-                accountStorage,
-                linkService,
-                youTubeService,
-                getLogger()
-        );
-        this.callbackServer.start();
+        // Embedded callback server is deprecated and only started if legacy client-id is explicitly configured
+        if (pluginConfig.getClientId() != null && !pluginConfig.getClientId().isBlank() && pluginConfig.getCallbackPort() > 0) {
+            this.callbackServer = new OAuthCallbackServer(
+                    this,
+                    pluginConfig,
+                    stateManager,
+                    oAuthClient,
+                    youTubeApiClient,
+                    accountStorage,
+                    linkService,
+                    youTubeService,
+                    getLogger()
+            );
+            this.callbackServer.start();
+        }
 
         // 5. Initialize Live Chat Announcement System
         this.announcementFormatter = new AnnouncementFormatter(pluginConfig, getLogger());
@@ -200,10 +219,11 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         // 8. Register Event Listeners
         getServer().getPluginManager().registerEvents(this, this);
 
-        // 9. Start Asynchronous Polling Engines
+        // 9. Start Asynchronous Polling Engines (Batch MCast Querying)
         this.scheduler = new LiveStatusScheduler(
                 this,
                 pluginConfig,
+                mcastApiClient,
                 youTubeService,
                 linkService,
                 allowedStorage,
@@ -221,6 +241,9 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
+        if (registrationService != null) {
+            registrationService.stop();
+        }
         if (webServerManager != null) {
             webServerManager.stop();
         }
@@ -297,12 +320,12 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     private void logStartupSummary() {
         getLogger().info("==================================================");
-        getLogger().info("LiveStatus v" + getPluginMeta().getVersion() + " (Self-Contained)");
-        getLogger().info("OAuth Configured: " + (pluginConfig.isOAuthConfigured() ? "YES" : "NO (Set client-id & client-secret in config.yml)"));
-        getLogger().info("Redirect URI: " + pluginConfig.getRedirectUri());
-        getLogger().info("Callback Port: " + pluginConfig.getCallbackPort());
+        getLogger().info("MCast LiveStatus v" + getPluginMeta().getVersion());
+        getLogger().info("Server Installation ID: " + (serverIdentity != null ? serverIdentity.getServerId() : "Unassigned"));
+        getLogger().info("MCast Central API: " + (mcastApiClient != null ? mcastApiClient.getBaseUrl() : "https://api.mcast.fun"));
+        getLogger().info("Centralized Google OAuth: ACTIVE (Managed via mcast.fun)");
         getLogger().info("Nametag Provider: " + pluginConfig.getNametagProvider() + " (enabled=" + pluginConfig.isNametagEnabled() + ")");
-        getLogger().info("Polling Interval: " + pluginConfig.getPollingIntervalSeconds() + "s");
+        getLogger().info("Live Polling Interval: " + pluginConfig.getPollingIntervalSeconds() + "s");
         getLogger().info("Admin Authorized Players: " + allowedStorage.getAllowedUuids().size());
         getLogger().info("Linked Accounts in Storage: " + accountStorage.getAllAccounts().size());
         getLogger().info("Chat Announcements: " + (pluginConfig.isChatEnabled() && pluginConfig.isAdminChatEnabled() ? "ENABLED" : "DISABLED") +
@@ -421,6 +444,18 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     public WebServerManager getWebServerManager() {
         return webServerManager;
+    }
+
+    public MCastServerIdentity getServerIdentity() {
+        return serverIdentity;
+    }
+
+    public MCastApiClient getMcastApiClient() {
+        return mcastApiClient;
+    }
+
+    public MCastRegistrationService getRegistrationService() {
+        return registrationService;
     }
 }
 

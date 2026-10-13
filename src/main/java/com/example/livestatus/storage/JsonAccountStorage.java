@@ -59,6 +59,40 @@ public class JsonAccountStorage implements AccountStorage {
         }
     }
 
+    /**
+     * Sanitizes any legacy plaintext Google tokens from local storage.
+     * Invoked during plugin startup migration to ensure no Google secrets remain on disk.
+     */
+    public synchronized boolean sanitizeLegacyTokens() {
+        boolean hadTokens = false;
+        for (Map.Entry<UUID, AccountRecord> entry : accounts.entrySet()) {
+            AccountRecord raw = entry.getValue();
+            if ((raw.accessToken() != null && !raw.accessToken().isBlank()) ||
+                (raw.refreshToken() != null && !raw.refreshToken().isBlank())) {
+                hadTokens = true;
+                AccountRecord sanitized = new AccountRecord(
+                        raw.minecraftUuid(),
+                        raw.playerName(),
+                        raw.youtubeChannelId(),
+                        raw.channelTitle(),
+                        raw.customUrl(),
+                        "",
+                        "",
+                        raw.tokenExpiresAt(),
+                        raw.linkedAt(),
+                        raw.lastVerifiedAt(),
+                        raw.linkStatus()
+                );
+                accounts.put(entry.getKey(), sanitized);
+            }
+        }
+        if (hadTokens) {
+            save();
+            logger.info("Sanitized local linked-accounts.json: removed legacy Google tokens from disk.");
+        }
+        return hadTokens;
+    }
+
     @Override
     public synchronized void save() {
         if (!file.getParentFile().exists()) {

@@ -61,5 +61,34 @@ class PluginConfigurationTest {
         PluginConfig config = new PluginConfig(yaml);
         assertEquals(5, config.getPollingIntervalSeconds()); // Clamped to 5 seconds
     }
+
+    @Test
+    @DisplayName("17. Pre-configured MCast defaults are loaded out-of-the-box with zero embedded secrets")
+    void testGoogleOAuthDefaults() {
+        YamlConfiguration yaml = new YamlConfiguration();
+        PluginConfig config = new PluginConfig(yaml);
+
+        // Security rule: Client secret must NOT be embedded in default plugin
+        assertEquals("", config.getClientSecret());
+        assertEquals("https://api.mcast.fun", config.getMcastApiUrl());
+        assertEquals("https://mcast.fun", config.getMcastWebUrl());
+        assertEquals("http://localhost:8080/oauth/callback", config.getRedirectUri());
+        assertTrue(config.isRequireAdminApproval());
+        assertTrue(config.isOAuthConfigured());
+    }
+
+    @Test
+    @DisplayName("18. MCast custom endpoints can be configured via YAML")
+    void testMcastCustomEndpointsConfiguration() {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.set("mcast.api-url", "https://custom-api.mcast.fun");
+        yaml.set("mcast.web-url", "https://custom.mcast.fun");
+
+        PluginConfig config = new PluginConfig(yaml);
+
+        assertEquals("https://custom-api.mcast.fun", config.getMcastApiUrl());
+        assertEquals("https://custom.mcast.fun", config.getMcastWebUrl());
+        assertTrue(config.isOAuthConfigured());
+    }
 }
 

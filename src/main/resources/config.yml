@@ -1,24 +1,28 @@
 # ==============================================================================
-# LiveStatus - Self-Contained Minecraft Paper Plugin Configuration
+# MCast LiveStatus (YT Link) - Centralized Minecraft Paper Plugin Configuration
+# Ready out of the box! All Google OAuth credentials are managed centrally
+# by MCast (https://mcast.fun). Server administrators do NOT need Google API keys.
 # ==============================================================================
 
-youtube:
-  # Google Cloud OAuth 2.0 Credentials (Web Application)
-  # You can specify directly or reference environment variables using ${ENV_VAR}
-  client-id: "${YOUTUBE_CLIENT_ID}"
-  client-secret: "${YOUTUBE_CLIENT_SECRET}"
-  # The exact redirect URI configured in your Google Cloud Console.
-  # Example: "http://localhost:8080/oauth/callback" or "https://stream.yourserver.com/oauth/callback"
-  redirect-uri: "${YOUTUBE_REDIRECT_URI:http://localhost:8080/oauth/callback}"
-  # Local port for the plugin's embedded OAuth callback receiver.
-  # If -1, automatically parses the port from redirect-uri.
-  callback-port: 8080
-  # Network interface host to bind the callback receiver ("0.0.0.0" for all interfaces).
-  callback-host: "0.0.0.0"
-  # Maximum time to wait for YouTube API HTTP responses (in milliseconds).
+mcast:
+  # Centralized MCast API endpoint.
+  api-url: "https://api.mcast.fun"
+  # Web linking portal URL displayed to players in-game.
+  web-url: "https://mcast.fun"
+  # Maximum time to wait for MCast API HTTP responses (in milliseconds).
   request-timeout-ms: 5000
-  # Secret key used for HMAC-SHA256 OAuth CSRF state protection.
-  state-secret: "${STATE_SECRET:livestatus_secure_random_seed}"
+
+linking:
+  # When true (recommended default), administrators must explicitly approve
+  # players using /youtube allow-link <player> before they can connect their channel.
+  # When set to false, any player with the 'livestatus.link' permission can link immediately.
+  require-admin-approval: true
+
+# Legacy / Standalone options (Not needed when connecting via central MCast)
+youtube:
+  callback-port: 8080
+  callback-host: "0.0.0.0"
+  request-timeout-ms: 5000
 
 polling:
   # How often the plugin queries YouTube for active stream updates (in seconds).

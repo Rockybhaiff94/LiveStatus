@@ -23,10 +23,10 @@ const DOCS: DocCard[] = [
   },
   {
     icon: KeyRound,
-    title: "Google OAuth Setup",
+    title: "Centralized OAuth",
     description:
-      "Create a Google Cloud project and configure OAuth 2.0 credentials.",
-    href: "https://github.com/PokeHowl/LiveStatus/blob/main/docs/OAUTH.md",
+      "All Google OAuth credentials are managed centrally by MCast — zero setup on your server.",
+    href: "https://github.com/Rockybhaiff94/LiveStatus/blob/main/docs/OAUTH.md",
   },
   {
     icon: Link2,
