@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: mcast-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: MCAST_WEB_URL
+        value: https://mcast.fun
+      - key: CORS_ORIGIN
+        value: https://mcast.fun
+      - key: GOOGLE_REDIRECT_URI
+        value: https://api.mcast.fun/v1/oauth/callback
+      - key: DATABASE_URL
+        sync: false
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: HMAC_STATE_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
