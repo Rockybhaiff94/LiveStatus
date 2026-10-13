@@ -13,6 +13,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Trust reverse proxy headers on Render / Cloudflare
+app.set('trust proxy', 1);
+
 // Security and CORS middleware
 app.use(helmet());
 app.use(cors({ origin: true, credentials: true }));
