@@ -36,6 +36,14 @@ public class MCastRegistrationService {
         attemptRegistration(1);
     }
 
+    /**
+     * Force immediate re-registration (e.g. after backend 401 or restart).
+     */
+    public void registerNow() {
+        registered.set(false);
+        attemptRegistration(1);
+    }
+
     private void attemptRegistration(int attempt) {
         String serverName = Bukkit.getServer().getName();
         String pluginVersion = plugin.getPluginMeta().getVersion();

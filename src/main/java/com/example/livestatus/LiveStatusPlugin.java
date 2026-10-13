@@ -118,6 +118,7 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.serverIdentity = new MCastServerIdentity(getDataFolder(), getLogger());
         this.mcastApiClient = new MCastApiClient(pluginConfig.getMcastApiUrl(), serverIdentity, getLogger());
         this.registrationService = new MCastRegistrationService(this, mcastApiClient, getLogger());
+        this.mcastApiClient.setOnUnregistered(() -> this.registrationService.registerNow());
         this.registrationService.start();
 
         // Preload stored accounts into in-memory link service
@@ -354,6 +355,10 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
         if (announcementScheduler != null) {
             announcementScheduler.start();
+        }
+
+        if (registrationService != null) {
+            registrationService.registerNow();
         }
     }
 

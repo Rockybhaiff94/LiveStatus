@@ -28,6 +28,11 @@ public class MCastApiClient {
     private final Logger logger;
     private final HttpClient httpClient;
     private final Gson gson = new Gson();
+    private volatile Runnable onUnregistered;
+
+    public void setOnUnregistered(Runnable onUnregistered) {
+        this.onUnregistered = onUnregistered;
+    }
 
     public record LinkSessionResponse(
             String sessionId,
@@ -168,6 +173,9 @@ public class MCastApiClient {
                         );
                     } else {
                         logger.warning("Failed to create link session on MCast API (HTTP " + res.statusCode() + "): " + res.body());
+                        if (res.statusCode() == 401 && onUnregistered != null) {
+                            onUnregistered.run();
+                        }
                         return null;
                     }
                 })
@@ -270,6 +278,9 @@ public class MCastApiClient {
                 .thenApply(res -> {
                     if (res.statusCode() != 200) {
                         logger.warning("MCast batch status returned HTTP " + res.statusCode() + ": " + res.body());
+                        if (res.statusCode() == 401 && onUnregistered != null) {
+                            onUnregistered.run();
+                        }
                         return Collections.<UUID, PlayerLiveStatus>emptyMap();
                     }
 
