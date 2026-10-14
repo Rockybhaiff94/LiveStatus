@@ -118,9 +118,77 @@ class DatabaseStore {
       );
       const client = await Promise.race([connectPromise, timeoutPromise]);
       try {
-        await client.query('ALTER TABLE youtube_accounts ADD COLUMN IF NOT EXISTS avatar_url TEXT;');
+        // Bootstrap all tables on first connection
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS servers (
+            id TEXT PRIMARY KEY,
+            secret_hash TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT 'Minecraft Server',
+            plugin_version TEXT NOT NULL DEFAULT '1.0.0',
+            paper_version TEXT NOT NULL DEFAULT 'Paper 1.21',
+            capabilities JSONB DEFAULT '[]'::jsonb,
+            registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_heartbeat_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            is_revoked BOOLEAN NOT NULL DEFAULT FALSE
+          );
+
+          CREATE TABLE IF NOT EXISTS youtube_accounts (
+            channel_id TEXT PRIMARY KEY,
+            channel_title TEXT NOT NULL,
+            custom_url TEXT,
+            avatar_url TEXT,
+            encrypted_refresh_token TEXT NOT NULL,
+            token_iv TEXT NOT NULL,
+            token_auth_tag TEXT NOT NULL,
+            token_status TEXT NOT NULL DEFAULT 'active',
+            last_refreshed_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE IF NOT EXISTS server_player_links (
+            id SERIAL PRIMARY KEY,
+            server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+            player_uuid UUID NOT NULL,
+            player_name TEXT NOT NULL,
+            youtube_channel_id TEXT NOT NULL REFERENCES youtube_accounts(channel_id) ON DELETE CASCADE,
+            is_authorized BOOLEAN NOT NULL DEFAULT TRUE,
+            linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (server_id, player_uuid)
+          );
+
+          CREATE TABLE IF NOT EXISTS link_sessions (
+            id UUID PRIMARY KEY,
+            code TEXT NOT NULL UNIQUE,
+            server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+            player_uuid UUID NOT NULL,
+            player_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            youtube_channel_id TEXT,
+            expires_at TIMESTAMPTZ NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            consumed_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE IF NOT EXISTS stream_cache (
+            channel_id TEXT PRIMARY KEY,
+            is_live BOOLEAN NOT NULL DEFAULT FALSE,
+            is_minecraft BOOLEAN NOT NULL DEFAULT FALSE,
+            video_id TEXT,
+            title TEXT,
+            stream_url TEXT,
+            status TEXT NOT NULL DEFAULT 'UNKNOWN',
+            checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_error TEXT
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_server_player_links_player ON server_player_links(player_uuid);
+        `);
+        console.log('[DB] Schema bootstrap complete (all tables ensured).');
       } catch (err: any) {
-        console.warn('[DB] Non-fatal notice ensuring avatar_url column:', err.message);
+        console.warn('[DB] Non-fatal notice during schema bootstrap:', err.message);
       }
       client.release();
       this.isConnectedToPostgres = true;
@@ -310,12 +378,45 @@ class DatabaseStore {
   }
 
   public async unlinkPlayer(serverId: string, playerUuid: string): Promise<boolean> {
+    const uuidLower = playerUuid.toLowerCase();
     if (this.isConnectedToPostgres && this.pool) {
-      const res = await this.pool.query('DELETE FROM server_player_links WHERE server_id = $1 AND player_uuid = $2', [serverId, playerUuid]);
+      // Unlink globally across all servers to prevent cross-server auto-linking from resurrecting the link
+      const res = await this.pool.query('DELETE FROM server_player_links WHERE player_uuid = $1', [uuidLower]);
       return (res.rowCount ?? 0) > 0;
     }
-    const key = `${serverId}:${playerUuid.toLowerCase()}`;
-    return this.memLinks.delete(key);
+    let deleted = false;
+    for (const [key, link] of this.memLinks.entries()) {
+      if (link.player_uuid.toLowerCase() === uuidLower) {
+        this.memLinks.delete(key);
+        deleted = true;
+      }
+    }
+    return deleted;
+  }
+
+  public async getAnyLinksForPlayers(playerUuids: string[]): Promise<Map<string, ServerPlayerLinkRecord>> {
+    const result = new Map<string, ServerPlayerLinkRecord>();
+    if (!playerUuids || playerUuids.length === 0) return result;
+
+    if (this.isConnectedToPostgres && this.pool) {
+      const res = await this.pool.query(
+        'SELECT DISTINCT ON (player_uuid) * FROM server_player_links WHERE player_uuid = ANY($1::uuid[]) AND is_authorized = TRUE ORDER BY player_uuid, updated_at DESC',
+        [playerUuids]
+      );
+      for (const row of res.rows) {
+        result.set(row.player_uuid.toLowerCase(), row);
+      }
+      return result;
+    }
+
+    const lowerSet = new Set(playerUuids.map(u => u.toLowerCase()));
+    for (const link of this.memLinks.values()) {
+      const uuid = link.player_uuid.toLowerCase();
+      if (lowerSet.has(uuid) && link.is_authorized && !result.has(uuid)) {
+        result.set(uuid, link);
+      }
+    }
+    return result;
   }
 
   public async getPlayerLink(serverId: string, playerUuid: string): Promise<ServerPlayerLinkRecord | null> {

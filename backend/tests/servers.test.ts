@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import app from '../src/index.js';
+import { db } from '../src/db/index.js';
 
 describe('Server Registration & Linking API', () => {
   const serverId = 'srv_test_' + Math.random().toString(36).slice(2, 10);
@@ -238,5 +239,97 @@ describe('Server Registration & Linking API', () => {
     expect(chanRes.body.avatar_url).toBe(testAvatar);
     expect(chanRes.body.channel_url).toBe('https://www.youtube.com/@gamerpro');
     expect(chanRes.body.status).toBe('OFFLINE');
+  });
+
+  it('Cross-Server Linking: Server B should auto-link player linked on Server A and return status', async () => {
+    // 1. Link a player on Server A
+    const playerUuid = 'b2c3d4e5-f6a7-8b9c-0d1e-2f3a4b5c6d7e';
+    const channelId = 'UC_cross_server_test_123';
+
+    await db.linkPlayer({
+      server_id: serverId, // Server A
+      player_uuid: playerUuid,
+      player_name: 'CrossPlayer',
+      youtube_channel_id: channelId,
+      is_authorized: true,
+    });
+
+    await db.upsertYouTubeAccount({
+      channel_id: channelId,
+      channel_title: 'Cross Streamer',
+      custom_url: '@cross',
+      avatar_url: 'https://example.com/cross.png',
+      encrypted_refresh_token: 'dummy',
+      token_iv: 'dummy',
+      token_auth_tag: 'dummy',
+      token_status: 'active',
+      last_refreshed_at: new Date(),
+    });
+
+    await db.upsertStreamCache({
+      channel_id: channelId,
+      is_live: true,
+      is_minecraft: true,
+      video_id: 'vid_cross_123',
+      title: 'Playing Minecraft on Server B',
+      stream_url: 'https://youtube.com/watch?v=vid_cross_123',
+      status: 'LIVE_MINECRAFT',
+      checked_at: new Date(),
+      expires_at: new Date(Date.now() + 60000),
+      last_error: null,
+    });
+
+    // 2. Register Server B
+    const serverBId = 'srv_server_b_' + Math.random().toString(36).slice(2, 10);
+    const serverBSecret = 'sec_server_b_secret_key_1234567890_abcdefghijklmnop';
+    await request(app)
+      .post('/v1/servers/register')
+      .send({
+        server_id: serverBId,
+        server_secret: serverBSecret,
+        server_name: 'Server B Skyblock',
+      });
+
+    // 3. Server B queries batch-status for playerUuid
+    const batchRes = await request(app)
+      .post('/v1/servers/players/batch-status')
+      .set('X-MCast-Server-Id', serverBId)
+      .set('Authorization', `Bearer ${serverBSecret}`)
+      .send({
+        player_uuids: [playerUuid],
+      });
+
+    expect(batchRes.status).toBe(200);
+    expect(batchRes.body.statuses[playerUuid]).toBeDefined();
+    expect(batchRes.body.statuses[playerUuid].linked).toBe(true);
+    expect(batchRes.body.statuses[playerUuid].channel_id).toBe(channelId);
+    expect(batchRes.body.statuses[playerUuid].channel_title).toBe('Cross Streamer');
+    expect(batchRes.body.statuses[playerUuid].is_live).toBe(true);
+    expect(batchRes.body.statuses[playerUuid].status).toBe('LIVE_MINECRAFT');
+
+    // 4. Verify player is now also auto-linked to Server B in DB
+    const linkOnB = await db.getPlayerLink(serverBId, playerUuid);
+    expect(linkOnB).not.toBeNull();
+    expect(linkOnB?.youtube_channel_id).toBe(channelId);
+
+    // 5. Unlink player via Server B
+    const unlinkRes = await request(app)
+      .post('/v1/servers/players/unlink')
+      .set('X-MCast-Server-Id', serverBId)
+      .set('Authorization', `Bearer ${serverBSecret}`)
+      .send({ player_uuid: playerUuid });
+
+    expect(unlinkRes.status).toBe(200);
+    expect(unlinkRes.body.unlinked).toBe(true);
+
+    // 6. Verify subsequent batch-status queries on both servers return unlinked (no zombie resurrects)
+    const afterUnlinkResA = await request(app)
+      .post('/v1/servers/players/batch-status')
+      .set('X-MCast-Server-Id', serverId)
+      .set('Authorization', `Bearer ${serverSecret}`)
+      .send({ player_uuids: [playerUuid] });
+
+    expect(afterUnlinkResA.body.statuses[playerUuid].linked).toBe(false);
+    expect(afterUnlinkResA.body.statuses[playerUuid].status).toBe('NOT_LINKED');
   });
 });

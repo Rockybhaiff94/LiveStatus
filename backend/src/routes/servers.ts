@@ -249,16 +249,38 @@ serverRouter.post('/players/batch-status', requireServerAuth, async (req: Authen
       linkMap.set(link.player_uuid.toLowerCase(), link);
     }
 
+    // ponytail: cross-server auto-linking; link players authorized on any server to this server
+    const missingUuids = playerUuids.filter(uuid => !linkMap.has(uuid));
+    if (missingUuids.length > 0) {
+      const globalLinks = await db.getAnyLinksForPlayers(missingUuids);
+      for (const [uuid, globalLink] of globalLinks.entries()) {
+        try {
+          const autoLink = await db.linkPlayer({
+            server_id: server.id,
+            player_uuid: uuid,
+            player_name: globalLink.player_name,
+            youtube_channel_id: globalLink.youtube_channel_id,
+            is_authorized: globalLink.is_authorized,
+          });
+          linkMap.set(uuid, autoLink);
+        } catch (err: any) {
+          console.warn(`[Servers] Auto-link fallback for ${uuid}:`, err.message);
+          linkMap.set(uuid, globalLink);
+        }
+      }
+    }
+
     const statuses: Record<string, any> = {};
 
-    for (const uuid of playerUuids) {
+    // ponytail: parallelize per-player checks; max 200 per schema validation
+    await Promise.all(playerUuids.map(async (uuid) => {
       const link = linkMap.get(uuid);
-      if (!link) {
+      if (!link || !link.is_authorized) {
         statuses[uuid] = {
           linked: false,
           status: 'NOT_LINKED',
         };
-        continue;
+        return;
       }
 
       // Check live status for this YouTube channel
@@ -280,7 +302,7 @@ serverRouter.post('/players/batch-status', requireServerAuth, async (req: Authen
         checked_at: liveResult.checkedAt.toISOString(),
         error: liveResult.error || null,
       };
-    }
+    }));
 
     res.json({
       server_id: server.id,
