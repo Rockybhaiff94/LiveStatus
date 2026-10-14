@@ -69,6 +69,7 @@ export interface StreamCacheRecord {
 class DatabaseStore {
   private pool: pg.Pool | null = null;
   private isConnectedToPostgres = false;
+  private lastConnectionError: string | null = null;
 
   // In-memory backing stores
   private memServers = new Map<string, ServerRecord>();
@@ -88,14 +89,22 @@ class DatabaseStore {
           max: 20,
           idleTimeoutMillis: 30000,
         });
-      } catch (err) {
+      } catch (err: any) {
+        this.lastConnectionError = err?.message || 'Pool initialization failed';
         console.warn('[DB] PostgreSQL pool initialization failed, using in-memory store:', err);
       }
+    } else {
+      this.lastConnectionError = 'No DATABASE_URL configured';
     }
   }
 
   public async init(): Promise<void> {
-    if (!this.pool) return;
+    if (!this.pool) {
+      if (!this.lastConnectionError) {
+        this.lastConnectionError = 'DATABASE_URL not configured';
+      }
+      return;
+    }
     try {
       const client = await this.pool.connect();
       try {
@@ -105,11 +114,48 @@ class DatabaseStore {
       }
       client.release();
       this.isConnectedToPostgres = true;
+      this.lastConnectionError = null;
       console.log('[DB] Connected to PostgreSQL successfully.');
     } catch (err: any) {
+      this.lastConnectionError = err.message;
       console.warn('[DB] PostgreSQL unavailable (' + err.message + '). Operating in resilient in-memory mode.');
       this.isConnectedToPostgres = false;
     }
+  }
+
+  public isPostgres(): boolean {
+    return this.isConnectedToPostgres;
+  }
+
+  public getStatus() {
+    return {
+      engine: this.isConnectedToPostgres ? ('postgresql' as const) : ('in-memory' as const),
+      connected: this.isConnectedToPostgres,
+      pool_initialized: !!this.pool,
+      last_error: this.lastConnectionError,
+    };
+  }
+
+  public async ping(): Promise<{ ok: boolean; latency_ms?: number; error?: string; in_memory_stats?: Record<string, number> }> {
+    if (this.isConnectedToPostgres && this.pool) {
+      const start = Date.now();
+      try {
+        await this.pool.query('SELECT 1;');
+        return { ok: true, latency_ms: Date.now() - start };
+      } catch (err: any) {
+        return { ok: false, error: err.message };
+      }
+    }
+    return {
+      ok: true,
+      in_memory_stats: {
+        servers: this.memServers.size,
+        accounts: this.memAccounts.size,
+        links: this.memLinks.size,
+        sessions: this.memSessions.size,
+        stream_cache: this.memStreamCache.size,
+      },
+    };
   }
 
   // --- SERVERS ---

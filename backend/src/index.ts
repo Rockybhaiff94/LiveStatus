@@ -40,13 +40,19 @@ const oauthLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Please try again later.' },
 });
 
-// Health Check
-app.get('/health', (req, res) => {
+// Health Check with Database Status
+app.get('/health', async (req, res) => {
+  const dbStatus = db.getStatus();
+  const dbPing = await db.ping();
   res.json({
     status: 'healthy',
     service: 'mcast-backend',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    database: {
+      ...dbStatus,
+      ...dbPing,
+    },
   });
 });
 

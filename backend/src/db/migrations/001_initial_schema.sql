@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.youtube_accounts (
     channel_id VARCHAR(64) PRIMARY KEY,
     channel_title VARCHAR(255) NOT NULL,
     custom_url VARCHAR(255),
+    avatar_url TEXT,
     encrypted_refresh_token TEXT NOT NULL,
     token_iv VARCHAR(32) NOT NULL,
     token_auth_tag VARCHAR(32) NOT NULL,
