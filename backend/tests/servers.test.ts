@@ -171,4 +171,72 @@ describe('Server Registration & Linking API', () => {
     expect(res.status).toBe(200);
     expect(res.body.player_uuid).toBe(testPlayerUuid);
   });
+
+  it('Completed link session should return connected channel details and live status on public verify and status endpoints', async () => {
+    const testChannelId = 'UC_connected_test_chan_' + Math.random().toString(36).slice(2, 8);
+    const testAvatar = 'https://yt3.googleusercontent.com/test_avatar.jpg';
+
+    // Register connected account
+    const { db } = await import('../src/db/index.js');
+    const { encryptToken } = await import('../src/crypto/encryption.js');
+    const enc = encryptToken('dummy_refresh_token_123');
+    await db.upsertYouTubeAccount({
+      channel_id: testChannelId,
+      channel_title: 'Connected Gamer Pro',
+      custom_url: '@gamerpro',
+      avatar_url: testAvatar,
+      encrypted_refresh_token: enc.ciphertext,
+      token_iv: enc.iv,
+      token_auth_tag: enc.authTag,
+      token_status: 'active',
+      last_refreshed_at: new Date(),
+    });
+
+    // Pre-populate stream cache so test runs offline
+    await db.upsertStreamCache({
+      channel_id: testChannelId,
+      is_live: false,
+      is_minecraft: false,
+      video_id: null,
+      title: null,
+      stream_url: null,
+      status: 'OFFLINE',
+      checked_at: new Date(),
+      expires_at: new Date(Date.now() + 60000),
+      last_error: null,
+    });
+
+    // Complete the created session
+    await db.completeLinkSession(createdSessionId, testChannelId);
+
+    // 1. GET /v1/link-sessions/verify with completed session code
+    const verifyRes = await request(app).get(`/v1/link-sessions/verify?code=${createdCode}`);
+    expect(verifyRes.status).toBe(200);
+    expect(verifyRes.body.valid).toBe(true);
+    expect(verifyRes.body.status).toBe('completed');
+    expect(verifyRes.body.connected).toBe(true);
+    expect(verifyRes.body.player_name).toBe('Notch');
+    expect(verifyRes.body.channel).toBeDefined();
+    expect(verifyRes.body.channel.channel_id).toBe(testChannelId);
+    expect(verifyRes.body.channel.channel_title).toBe('Connected Gamer Pro');
+    expect(verifyRes.body.channel.avatar_url).toBe(testAvatar);
+    expect(verifyRes.body.channel.channel_url).toBe('https://www.youtube.com/@gamerpro');
+    expect(verifyRes.body.live_status).toBeDefined();
+    expect(verifyRes.body.live_status.is_live).toBe(false);
+
+    // 2. GET /v1/link-sessions/status?code=...
+    const statusRes = await request(app).get(`/v1/link-sessions/status?code=${createdCode}`);
+    expect(statusRes.status).toBe(200);
+    expect(statusRes.body.connected).toBe(true);
+    expect(statusRes.body.channel.avatar_url).toBe(testAvatar);
+
+    // 3. GET /v1/channels/:channelId/status
+    const chanRes = await request(app).get(`/v1/channels/${testChannelId}/status`);
+    expect(chanRes.status).toBe(200);
+    expect(chanRes.body.channel_id).toBe(testChannelId);
+    expect(chanRes.body.channel_title).toBe('Connected Gamer Pro');
+    expect(chanRes.body.avatar_url).toBe(testAvatar);
+    expect(chanRes.body.channel_url).toBe('https://www.youtube.com/@gamerpro');
+    expect(chanRes.body.status).toBe('OFFLINE');
+  });
 });

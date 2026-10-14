@@ -16,6 +16,7 @@ export interface YouTubeAccountRecord {
   channel_id: string;
   channel_title: string;
   custom_url: string | null;
+  avatar_url?: string | null;
   encrypted_refresh_token: string;
   token_iv: string;
   token_auth_tag: string;
@@ -97,6 +98,11 @@ class DatabaseStore {
     if (!this.pool) return;
     try {
       const client = await this.pool.connect();
+      try {
+        await client.query('ALTER TABLE youtube_accounts ADD COLUMN IF NOT EXISTS avatar_url TEXT;');
+      } catch (err: any) {
+        console.warn('[DB] Non-fatal notice ensuring avatar_url column:', err.message);
+      }
       client.release();
       this.isConnectedToPostgres = true;
       console.log('[DB] Connected to PostgreSQL successfully.');
@@ -163,11 +169,12 @@ class DatabaseStore {
     const now = new Date();
     if (this.isConnectedToPostgres && this.pool) {
       const res = await this.pool.query(
-        `INSERT INTO youtube_accounts (channel_id, channel_title, custom_url, encrypted_refresh_token, token_iv, token_auth_tag, token_status, last_refreshed_at, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+        `INSERT INTO youtube_accounts (channel_id, channel_title, custom_url, avatar_url, encrypted_refresh_token, token_iv, token_auth_tag, token_status, last_refreshed_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
          ON CONFLICT (channel_id) DO UPDATE SET
            channel_title = EXCLUDED.channel_title,
            custom_url = EXCLUDED.custom_url,
+           avatar_url = COALESCE(EXCLUDED.avatar_url, youtube_accounts.avatar_url),
            encrypted_refresh_token = EXCLUDED.encrypted_refresh_token,
            token_iv = EXCLUDED.token_iv,
            token_auth_tag = EXCLUDED.token_auth_tag,
@@ -175,7 +182,7 @@ class DatabaseStore {
            last_refreshed_at = EXCLUDED.last_refreshed_at,
            updated_at = EXCLUDED.updated_at
          RETURNING *;`,
-        [account.channel_id, account.channel_title, account.custom_url, account.encrypted_refresh_token, account.token_iv, account.token_auth_tag, account.token_status, account.last_refreshed_at, now]
+        [account.channel_id, account.channel_title, account.custom_url, account.avatar_url || null, account.encrypted_refresh_token, account.token_iv, account.token_auth_tag, account.token_status, account.last_refreshed_at, now]
       );
       return res.rows[0];
     }
@@ -183,6 +190,7 @@ class DatabaseStore {
     const existing = this.memAccounts.get(account.channel_id);
     const rec: YouTubeAccountRecord = {
       ...account,
+      avatar_url: account.avatar_url !== undefined ? account.avatar_url : (existing ? existing.avatar_url : null),
       created_at: existing ? existing.created_at : now,
       updated_at: now,
     };

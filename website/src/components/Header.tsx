@@ -5,10 +5,11 @@ import Link from "next/link";
 import { Menu, X, Download } from "lucide-react";
 
 const NAV_LINKS = [
-  { label: "Home", href: "#" },
-  { label: "Features", href: "#features" },
-  { label: "Installation", href: "#how-it-works" },
-  { label: "Documentation", href: "#docs" },
+  { label: "Home", href: "/" },
+  { label: "Features", href: "/#features" },
+  { label: "Installation", href: "/#how-it-works" },
+  { label: "Documentation", href: "/#docs" },
+  { label: "Dashboard", href: "/dashboard" },
 ] as const;
 
 export default function Header() {

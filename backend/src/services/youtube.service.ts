@@ -8,6 +8,7 @@ export interface ChannelProfile {
   channelId: string;
   title: string;
   customUrl: string | null;
+  avatarUrl: string | null;
 }
 
 export interface LiveBroadcastResult {
@@ -210,11 +211,14 @@ export class YouTubeService {
     const item = json.items[0];
     const channelId = item.id;
     const snippet = item.snippet || {};
+    const thumbnails = snippet.thumbnails || {};
+    const avatarUrl = thumbnails.high?.url || thumbnails.medium?.url || thumbnails.default?.url || null;
 
     return {
       channelId,
       title: snippet.title || 'Unknown Channel',
       customUrl: snippet.customUrl || null,
+      avatarUrl,
     };
   }
 

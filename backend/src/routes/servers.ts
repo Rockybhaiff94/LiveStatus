@@ -171,11 +171,13 @@ serverRouter.get('/link-sessions/:id', requireServerAuth, async (req: Authentica
 
     let channelTitle: string | null = null;
     let customUrl: string | null = null;
+    let avatarUrl: string | null = null;
     if (session.youtube_channel_id) {
       const acc = await db.getYouTubeAccount(session.youtube_channel_id);
       if (acc) {
         channelTitle = acc.channel_title;
         customUrl = acc.custom_url;
+        avatarUrl = acc.avatar_url || null;
       }
     }
 
@@ -188,6 +190,7 @@ serverRouter.get('/link-sessions/:id', requireServerAuth, async (req: Authentica
       youtube_channel_id: session.youtube_channel_id,
       channel_title: channelTitle,
       custom_url: customUrl,
+      avatar_url: avatarUrl,
       expires_at: new Date(session.expires_at).getTime(),
       consumed_at: session.consumed_at ? new Date(session.consumed_at).getTime() : null,
     });
@@ -267,6 +270,7 @@ serverRouter.post('/players/batch-status', requireServerAuth, async (req: Authen
         channel_id: link.youtube_channel_id,
         channel_title: acc ? acc.channel_title : 'YouTube Channel',
         custom_url: acc ? acc.custom_url : null,
+        avatar_url: acc ? (acc.avatar_url || null) : null,
         status: liveResult.status,
         is_live: liveResult.isLive,
         is_minecraft: liveResult.isMinecraft,

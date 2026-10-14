@@ -134,6 +134,7 @@ oauthRouter.get('/callback', async (req, res): Promise<void> => {
       channel_id: channel.channelId,
       channel_title: channel.title,
       custom_url: channel.customUrl,
+      avatar_url: channel.avatarUrl,
       encrypted_refresh_token: encrypted.ciphertext,
       token_iv: encrypted.iv,
       token_auth_tag: encrypted.authTag,
@@ -154,7 +155,10 @@ oauthRouter.get('/callback', async (req, res): Promise<void> => {
     await db.completeLinkSession(session.id, channel.channelId);
 
     // 9. Redirect player to success page on mcast.fun
-    res.redirect(`${webBaseUrl}/link/${session.code}/success?channel=${encodeURIComponent(channel.title)}&player=${encodeURIComponent(session.player_name)}`);
+    const avatarParam = channel.avatarUrl ? `&avatar=${encodeURIComponent(channel.avatarUrl)}` : '';
+    const customUrlParam = channel.customUrl ? `&custom_url=${encodeURIComponent(channel.customUrl)}` : '';
+    const channelIdParam = `&channel_id=${encodeURIComponent(channel.channelId)}`;
+    res.redirect(`${webBaseUrl}/link/${session.code}/success?channel=${encodeURIComponent(channel.title)}&player=${encodeURIComponent(session.player_name)}${channelIdParam}${avatarParam}${customUrlParam}`);
   } catch (err: any) {
     console.error('[OAuth] Token exchange / linking error:', err);
     res.redirect(`${webBaseUrl}/link/error?reason=exchange_failed&details=${encodeURIComponent(err.message || 'unknown')}`);
