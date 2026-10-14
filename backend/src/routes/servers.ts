@@ -278,6 +278,7 @@ serverRouter.post('/players/batch-status', requireServerAuth, async (req: Authen
         title: liveResult.title || null,
         stream_url: liveResult.streamUrl || null,
         checked_at: liveResult.checkedAt.toISOString(),
+        error: liveResult.error || null,
       };
     }
 

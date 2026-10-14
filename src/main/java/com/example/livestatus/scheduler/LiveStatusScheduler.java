@@ -131,7 +131,7 @@ public class LiveStatusScheduler implements Runnable {
                                     YouTubeAccount ytAccount = new YouTubeAccount(status.channelId(), status.channelTitle(), null);
                                     linkService.updateAccount(uuid, true, ytAccount);
                                 }
-                                linkService.updateStatus(uuid, status.status(), null);
+                                linkService.updateStatus(uuid, status.status(), status.error());
                             }
 
                             syncVisualIndicators();

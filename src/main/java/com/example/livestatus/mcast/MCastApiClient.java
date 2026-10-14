@@ -70,8 +70,15 @@ public class MCastApiClient {
             boolean isMinecraft,
             String videoId,
             String title,
-            String streamUrl
-    ) {}
+            String streamUrl,
+            String error
+    ) {
+        public PlayerLiveStatus(UUID playerUuid, boolean linked, String channelId, String channelTitle,
+                                YouTubeStatus status, boolean isLive, boolean isMinecraft,
+                                String videoId, String title, String streamUrl) {
+            this(playerUuid, linked, channelId, channelTitle, status, isLive, isMinecraft, videoId, title, streamUrl, null);
+        }
+    }
 
     public MCastApiClient(String baseUrl, MCastServerIdentity identity, Logger logger) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
@@ -324,10 +331,11 @@ public class MCastApiClient {
                             String videoId = sObj.has("video_id") && !sObj.get("video_id").isJsonNull() ? sObj.get("video_id").getAsString() : null;
                             String title = sObj.has("title") && !sObj.get("title").isJsonNull() ? sObj.get("title").getAsString() : null;
                             String streamUrl = sObj.has("stream_url") && !sObj.get("stream_url").isJsonNull() ? sObj.get("stream_url").getAsString() : null;
+                            String error = sObj.has("error") && !sObj.get("error").isJsonNull() ? sObj.get("error").getAsString() : null;
 
                             results.put(uuid, new PlayerLiveStatus(
                                     uuid, true, channelId, channelTitle, ytStatus,
-                                    isLive, isMinecraft, videoId, title, streamUrl
+                                    isLive, isMinecraft, videoId, title, streamUrl, error
                             ));
                         } catch (Exception e) {
                             logger.warning("Error parsing player status entry: " + entry.getKey());

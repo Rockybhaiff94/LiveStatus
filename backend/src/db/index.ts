@@ -262,6 +262,22 @@ class DatabaseStore {
     return this.memAccounts.get(channelId) || null;
   }
 
+  public async updateTokenStatus(channelId: string, status: string): Promise<boolean> {
+    const now = new Date();
+    if (this.isConnectedToPostgres && this.pool) {
+      const res = await this.pool.query(
+        'UPDATE youtube_accounts SET token_status = $1, updated_at = $2 WHERE channel_id = $3',
+        [status, now, channelId]
+      );
+      return (res.rowCount ?? 0) > 0;
+    }
+    const acc = this.memAccounts.get(channelId);
+    if (!acc) return false;
+    acc.token_status = status;
+    acc.updated_at = now;
+    return true;
+  }
+
   // --- SERVER PLAYER LINKS ---
 
   public async linkPlayer(link: Omit<ServerPlayerLinkRecord, 'id' | 'linked_at' | 'updated_at'>): Promise<ServerPlayerLinkRecord> {

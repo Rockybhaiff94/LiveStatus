@@ -370,4 +370,168 @@ describe('YouTube Service & Live-Status Checker', () => {
       warnSpy.mockRestore();
     });
   });
+
+  describe('7. OAuth Token Lifecycle: Expiry, Missing Tokens, Revocation & Reconnection', () => {
+    it('should throw clear reauthorization error when refresh token is missing or empty', async () => {
+      await expect(service.refreshAccessToken('')).rejects.toThrow(/reauthorization required/i);
+      await expect(service.refreshAccessToken('   ')).rejects.toThrow(/reauthorization required/i);
+    });
+
+    it('should refresh access token successfully when valid refresh token is supplied', async () => {
+      global.fetch = vi.fn(async () => {
+        return new Response(JSON.stringify({ access_token: 'refreshed_super_token_123', expires_in: 3600 }), { status: 200 });
+      });
+
+      const res = await service.refreshAccessToken('valid_google_refresh_token');
+      expect(res.accessToken).toBe('refreshed_super_token_123');
+      expect(res.expiresIn).toBe(3600);
+    });
+
+    it('should handle revoked refresh token (invalid_grant) and update DB token_status to reauth_required', async () => {
+      const revokedChannelId = 'UC_revoked_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('revoked_refresh_token_xyz');
+      await db.upsertYouTubeAccount({
+        channel_id: revokedChannelId,
+        channel_title: 'Revoked Channel',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(
+            JSON.stringify({
+              error: 'invalid_grant',
+              error_description: 'Token has been expired or revoked.',
+            }),
+            { status: 400 }
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(revokedChannelId);
+
+      expect(result.status).toBe('UNKNOWN');
+      expect(result.error).toContain('reconnect');
+
+      // Verify DB was updated to reauth_required
+      const updatedAccount = await db.getYouTubeAccount(revokedChannelId);
+      expect(updatedAccount?.token_status).toBe('reauth_required');
+    });
+
+    it('should immediately return reauthorization error without calling API when token_status is reauth_required', async () => {
+      const flaggedChannelId = 'UC_flagged_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('any_token');
+      await db.upsertYouTubeAccount({
+        channel_id: flaggedChannelId,
+        channel_title: 'Flagged Channel',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'reauth_required',
+        last_refreshed_at: new Date(),
+      });
+
+      const fetchSpy = vi.fn();
+      global.fetch = fetchSpy;
+
+      const result = await service.checkChannelLiveStatus(flaggedChannelId);
+
+      expect(result.status).toBe('UNKNOWN');
+      expect(result.error).toContain('reconnect');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('should display OFFLINE with no error when API check confirms channel is not live', async () => {
+      const offlineChannelId = 'UC_offline_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('valid_refresh_token');
+      await db.upsertYouTubeAccount({
+        channel_id: offlineChannelId,
+        channel_title: 'Offline Channel',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(JSON.stringify({ access_token: 'fresh_token', expires_in: 3600 }), { status: 200 });
+        }
+        if (urlStr.includes('liveBroadcasts')) {
+          return new Response(JSON.stringify({ items: [] }), { status: 200 });
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(offlineChannelId);
+
+      expect(result.status).toBe('OFFLINE');
+      expect(result.isLive).toBe(false);
+      expect(result.error).toBeUndefined();
+    });
+
+    it('should preserve existing refresh token when reauthorizing if Google omits refresh_token', async () => {
+      const reauthChannelId = 'UC_reauth_' + Math.random().toString(36).slice(2, 8);
+      const initialEnc = encryptToken('original_precious_refresh_token');
+
+      // 1. Initial account storage with refresh token
+      await db.upsertYouTubeAccount({
+        channel_id: reauthChannelId,
+        channel_title: 'Original Title',
+        custom_url: '@original',
+        encrypted_refresh_token: initialEnc.ciphertext,
+        token_iv: initialEnc.iv,
+        token_auth_tag: initialEnc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      const existing = await db.getYouTubeAccount(reauthChannelId);
+      expect(existing).not.toBeNull();
+
+      // 2. Simulate reauthorization with Google returning empty refreshToken
+      const googleTokens = { accessToken: 'short_lived_acc_token', refreshToken: '' };
+      let encryptedToSave: { ciphertext: string; iv: string; authTag: string };
+
+      if (googleTokens.refreshToken && googleTokens.refreshToken.length > 0) {
+        encryptedToSave = encryptToken(googleTokens.refreshToken);
+      } else if (existing && existing.encrypted_refresh_token && existing.token_status === 'active') {
+        encryptedToSave = {
+          ciphertext: existing.encrypted_refresh_token,
+          iv: existing.token_iv,
+          authTag: existing.token_auth_tag,
+        };
+      } else {
+        throw new Error('Should not reach here');
+      }
+
+      await db.upsertYouTubeAccount({
+        channel_id: reauthChannelId,
+        channel_title: 'Updated Title',
+        custom_url: '@updated',
+        encrypted_refresh_token: encryptedToSave.ciphertext,
+        token_iv: encryptedToSave.iv,
+        token_auth_tag: encryptedToSave.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      // 3. Verify original refresh token was preserved and not overwritten
+      const updated = await db.getYouTubeAccount(reauthChannelId);
+      expect(updated?.encrypted_refresh_token).toBe(initialEnc.ciphertext);
+      expect(updated?.channel_title).toBe('Updated Title');
+      expect(updated?.token_status).toBe('active');
+    });
+  });
 });

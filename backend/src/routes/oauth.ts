@@ -56,6 +56,7 @@ oauthRouter.get('/authorize', async (req, res): Promise<void> => {
     googleAuthUrl.searchParams.set('scope', scope);
     googleAuthUrl.searchParams.set('access_type', 'offline');
     googleAuthUrl.searchParams.set('prompt', 'consent');
+    googleAuthUrl.searchParams.set('include_granted_scopes', 'true');
     googleAuthUrl.searchParams.set('state', signedState);
 
     res.redirect(googleAuthUrl.toString());
@@ -119,15 +120,32 @@ oauthRouter.get('/callback', async (req, res): Promise<void> => {
 
     // 3. Exchange code for access & refresh tokens
     const tokens = await youtubeService.exchangeCode(String(code));
-    if (!tokens.refreshToken) {
-      console.warn('[OAuth] Warning: Google did not return a refresh_token. Re-prompt consent may be needed.');
-    }
 
     // 4. Retrieve creator's YouTube channel profile (1 quota unit)
     const channel = await youtubeService.getChannelProfile(tokens.accessToken);
 
-    // 5. Encrypt refresh token at rest using AES-256-GCM
-    const encrypted = encryptToken(tokens.refreshToken || tokens.accessToken);
+    // 5. Retrieve existing account if any to handle refresh token preservation
+    const existingAccount = await db.getYouTubeAccount(channel.channelId);
+
+    let encryptedRefreshToken: { ciphertext: string; iv: string; authTag: string };
+
+    if (tokens.refreshToken && tokens.refreshToken.trim().length > 0) {
+      // We received a fresh refresh token from Google -> encrypt and store
+      encryptedRefreshToken = encryptToken(tokens.refreshToken);
+    } else if (existingAccount && existingAccount.encrypted_refresh_token && existingAccount.token_status === 'active') {
+      // Reauthorization omitted refresh_token: preserve existing valid refresh token
+      encryptedRefreshToken = {
+        ciphertext: existingAccount.encrypted_refresh_token,
+        iv: existingAccount.token_iv,
+        authTag: existingAccount.token_auth_tag,
+      };
+      console.log(`[OAuth] Preserved existing refresh token for channel ${channel.channelId}`);
+    } else {
+      // Neither new nor existing refresh token available. Do not overwrite with short-lived access token!
+      console.warn(`[OAuth] Missing offline refresh token from Google for channel ${channel.channelId}`);
+      res.redirect(`${webBaseUrl}/link/error?reason=missing_refresh_token&details=${encodeURIComponent('Google did not return an offline refresh token. Please re-authorize and ensure offline access is consented.')}`);
+      return;
+    }
 
     // 6. Persist YouTube account credentials in DB
     await db.upsertYouTubeAccount({
@@ -135,9 +153,9 @@ oauthRouter.get('/callback', async (req, res): Promise<void> => {
       channel_title: channel.title,
       custom_url: channel.customUrl,
       avatar_url: channel.avatarUrl,
-      encrypted_refresh_token: encrypted.ciphertext,
-      token_iv: encrypted.iv,
-      token_auth_tag: encrypted.authTag,
+      encrypted_refresh_token: encryptedRefreshToken.ciphertext,
+      token_iv: encryptedRefreshToken.iv,
+      token_auth_tag: encryptedRefreshToken.authTag,
       token_status: 'active',
       last_refreshed_at: new Date(),
     });

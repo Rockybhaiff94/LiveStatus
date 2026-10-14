@@ -121,8 +121,10 @@ public class YouTubeService {
                 } else {
                     return new CachedBroadcastStatus(YouTubeStatus.UNKNOWN, null, System.currentTimeMillis(), "Failed to refresh expired OAuth token");
                 }
-            } else {
+            } else if (record.accessToken() != null && !record.accessToken().isBlank()) {
                 return new CachedBroadcastStatus(YouTubeStatus.UNKNOWN, null, System.currentTimeMillis(), "OAuth token expired with no refresh token");
+            } else {
+                return new CachedBroadcastStatus(YouTubeStatus.OFFLINE, null, System.currentTimeMillis(), null);
             }
         }
 

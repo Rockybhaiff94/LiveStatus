@@ -135,6 +135,10 @@ export class YouTubeService {
    * Refreshes an expired access token using the stored refresh token.
    */
   public async refreshAccessToken(refreshToken: string): Promise<{ accessToken: string; expiresIn: number }> {
+    if (!refreshToken || refreshToken.trim().length === 0) {
+      throw new Error('OAuth token expired with no refresh token. Reauthorization required: run /link youtube in Minecraft to reconnect.');
+    }
+
     const params = new URLSearchParams({
       client_id: this.clientId,
       client_secret: this.clientSecret,
@@ -151,10 +155,16 @@ export class YouTubeService {
     if (!res.ok) {
       const errText = await res.text();
       const sanitized = sanitizeApiError(errText, res.status);
+      if (errText.includes('invalid_grant') || errText.includes('unauthorized_client') || res.status === 400 || res.status === 401) {
+        throw new Error(`OAuth refresh token revoked or expired (${sanitized}). Reauthorization required: run /link youtube in Minecraft to reconnect.`);
+      }
       throw new Error(`Google token refresh failed: ${sanitized}`);
     }
 
     const data = (await res.json()) as any;
+    if (!data.access_token) {
+      throw new Error('Google token refresh response did not contain an access_token');
+    }
     return {
       accessToken: data.access_token,
       expiresIn: data.expires_in || 3600,
@@ -367,6 +377,20 @@ export class YouTubeService {
       };
     }
 
+    // Handle accounts marked as requiring reauthorization
+    if (account && (account.token_status === 'reauth_required' || account.token_status === 'revoked')) {
+      const reconnectMsg = 'OAuth token expired or revoked. Reauthorization required: run /link youtube in Minecraft to reconnect.';
+      this.logErrorThrottled(channelId, reconnectMsg);
+      return {
+        status: 'UNKNOWN',
+        isLive: false,
+        isMinecraft: false,
+        checkedAt: now,
+        expiresAt: new Date(now.getTime() + 60_000),
+        error: reconnectMsg,
+      };
+    }
+
     let accessToken: string | undefined;
     if (account) {
       try {
@@ -375,6 +399,17 @@ export class YouTubeService {
       } catch (err: any) {
         const sanitized = sanitizeApiError(err.message, 400);
         this.logErrorThrottled(channelId, `Failed to refresh token: ${sanitized}`);
+        this.clearAccessTokenCache(channelId);
+
+        const isRevoked = err.message?.includes('Reauthorization required') || err.message?.includes('invalid_grant');
+        if (isRevoked) {
+          await db.updateTokenStatus(channelId, 'reauth_required').catch(() => {});
+        }
+
+        const userError = isRevoked
+          ? 'OAuth token expired or revoked. Reauthorization required: run /link youtube in Minecraft to reconnect.'
+          : sanitized;
+
         if (cached) {
           return {
             status: cached.status,
@@ -385,7 +420,7 @@ export class YouTubeService {
             streamUrl: cached.stream_url || undefined,
             checkedAt: cached.checked_at,
             expiresAt: new Date(now.getTime() + 60_000),
-            error: 'Stale: Refresh token temporarily rejected',
+            error: 'Stale: ' + userError,
           };
         }
         return {
@@ -394,7 +429,7 @@ export class YouTubeService {
           isMinecraft: false,
           checkedAt: now,
           expiresAt: new Date(now.getTime() + 60_000),
-          error: sanitized,
+          error: userError,
         };
       }
     }

@@ -10,9 +10,11 @@ import com.example.livestatus.player.LinkedPlayer;
 import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.stats.PluginStatistics;
 import com.example.livestatus.storage.StreamerConfigStore;
+import com.example.livestatus.mcast.MCastApiClient;
 import com.example.livestatus.youtube.YouTubeAccount;
 import com.example.livestatus.youtube.YouTubeBroadcast;
 import com.example.livestatus.youtube.YouTubeService;
+import com.example.livestatus.youtube.YouTubeStatus;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -636,7 +638,7 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
 
         sender.sendMessage(Component.text("Checking live status for " + targetName + "...", NamedTextColor.GRAY));
 
-        youTubeService.checkStatus(target.getUniqueId()).thenAccept(status -> {
+        java.util.function.Consumer<YouTubeStatus> renderer = (status) -> {
             Optional<LinkedPlayer> opt = linkService.get(target.getUniqueId());
             boolean allowed = (plugin != null && !plugin.getPluginConfig().isRequireAdminApproval()) || linkService.isAuthorizedToLink(target.getUniqueId());
 
@@ -686,7 +688,30 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
             } else {
                 sender.sendMessage(Component.text("Account Linked: NO", NamedTextColor.GRAY));
             }
-        });
+        };
+
+        if (plugin != null && plugin.getMcastApiClient() != null) {
+            plugin.getMcastApiClient().fetchBatchStatus(java.util.Collections.singleton(target.getUniqueId()))
+                    .thenAccept(results -> {
+                        MCastApiClient.PlayerLiveStatus mStatus = results.get(target.getUniqueId());
+                        if (mStatus != null) {
+                            if (mStatus.linked()) {
+                                YouTubeAccount ytAccount = new YouTubeAccount(mStatus.channelId(), mStatus.channelTitle(), null);
+                                linkService.updateAccount(target.getUniqueId(), true, ytAccount);
+                            }
+                            linkService.updateStatus(target.getUniqueId(), mStatus.status(), mStatus.error());
+                            renderer.accept(mStatus.status());
+                        } else {
+                            renderer.accept(linkService.get(target.getUniqueId()).map(LinkedPlayer::getStatus).orElse(YouTubeStatus.UNKNOWN));
+                        }
+                    })
+                    .exceptionally(ex -> {
+                        renderer.accept(linkService.get(target.getUniqueId()).map(LinkedPlayer::getStatus).orElse(YouTubeStatus.UNKNOWN));
+                        return null;
+                    });
+        } else {
+            youTubeService.checkStatus(target.getUniqueId()).thenAccept(renderer::accept);
+        }
     }
 
     private void handleUnlink(CommandSender sender, String[] args) {
