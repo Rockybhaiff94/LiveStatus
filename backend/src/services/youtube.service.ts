@@ -22,15 +22,76 @@ export interface LiveBroadcastResult {
   error?: string;
 }
 
+export function sanitizeApiError(rawBody: string, status: number): string {
+  if (!rawBody || rawBody.trim().length === 0) {
+    return `HTTP ${status}`;
+  }
+
+  // Remove any OAuth tokens or secrets that might inadvertently appear in error payloads
+  const sanitized = rawBody
+    .replace(/(?:Bearer\s+)[a-zA-Z0-9_\-\.]+/gi, 'Bearer [REDACTED]')
+    .replace(/(?:ya29\.[a-zA-Z0-9_\-]+)/g, '[REDACTED_ACCESS_TOKEN]')
+    .replace(/(?:client_secret=)[^&"'\s]+/gi, 'client_secret=[REDACTED]')
+    .replace(/(?:refresh_token=)[^&"'\s]+/gi, 'refresh_token=[REDACTED]')
+    .replace(/(?:code=)[^&"'\s]+/gi, 'code=[REDACTED]');
+
+  try {
+    const json = JSON.parse(sanitized);
+    if (json.error) {
+      const code = json.error.code || status;
+      const message = json.error.message || 'Unknown API error';
+      const details = Array.isArray(json.error.errors) && json.error.errors.length > 0
+        ? json.error.errors.map((e: any) => `[${e.reason || e.domain || 'error'}]: ${e.message}`).join(', ')
+        : '';
+      return details ? `HTTP ${code} (${details})` : `HTTP ${code}: ${message}`;
+    }
+  } catch {
+    // Non-JSON response
+  }
+
+  const singleLine = sanitized.replace(/\s+/g, ' ').trim();
+  const truncated = singleLine.length > 250 ? singleLine.slice(0, 250) + '...' : singleLine;
+  return `HTTP ${status}: ${truncated}`;
+}
+
 export class YouTubeService {
   private clientId: string;
   private clientSecret: string;
   private redirectUri: string;
+  private apiKey: string;
+  private tokenCache = new Map<string, { accessToken: string; expiresAt: number }>();
+  private lastLoggedErrors = new Map<string, { message: string; timestamp: number }>();
 
   constructor() {
     this.clientId = process.env.GOOGLE_CLIENT_ID || '';
     this.clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
     this.redirectUri = process.env.GOOGLE_REDIRECT_URI || 'https://api.mcast.fun/v1/oauth/callback';
+    this.apiKey = process.env.YOUTUBE_API_KEY || process.env.GOOGLE_API_KEY || '';
+  }
+
+  /**
+   * Throttles error logging to avoid repeatedly printing the same error every 30 seconds.
+   */
+  public logErrorThrottled(channelId: string, message: string, intervalMs = 300_000): void {
+    const now = Date.now();
+    const prev = this.lastLoggedErrors.get(channelId);
+    if (!prev || prev.message !== message || (now - prev.timestamp) > intervalMs) {
+      console.warn(`[YouTube] Channel ${channelId}: ${message}`);
+      this.lastLoggedErrors.set(channelId, { message, timestamp: now });
+    }
+  }
+
+  /**
+   * Captures and sanitizes error response body from YouTube API calls without exposing tokens.
+   */
+  public async captureSanitizedError(res: Response, endpoint: string): Promise<string> {
+    try {
+      const text = await res.text();
+      const sanitized = sanitizeApiError(text, res.status);
+      return `${endpoint} failed with ${sanitized}`;
+    } catch {
+      return `${endpoint} failed with HTTP ${res.status}`;
+    }
   }
 
   /**
@@ -53,7 +114,8 @@ export class YouTubeService {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Google token exchange failed (${res.status}): ${errText}`);
+      const sanitized = sanitizeApiError(errText, res.status);
+      throw new Error(`Google token exchange failed: ${sanitized}`);
     }
 
     const data = (await res.json()) as any;
@@ -87,7 +149,8 @@ export class YouTubeService {
 
     if (!res.ok) {
       const errText = await res.text();
-      throw new Error(`Google token refresh failed (${res.status}): ${errText}`);
+      const sanitized = sanitizeApiError(errText, res.status);
+      throw new Error(`Google token refresh failed: ${sanitized}`);
     }
 
     const data = (await res.json()) as any;
@@ -95,6 +158,30 @@ export class YouTubeService {
       accessToken: data.access_token,
       expiresIn: data.expires_in || 3600,
     };
+  }
+
+  /**
+   * Obtains an unexpired access token for a channel, using cached token if still valid.
+   */
+  public async getAccessTokenForChannel(channelId: string, refreshToken: string): Promise<string> {
+    const cached = this.tokenCache.get(channelId);
+    if (cached && cached.expiresAt > Date.now() + 60_000) {
+      return cached.accessToken;
+    }
+
+    const tokenResult = await this.refreshAccessToken(refreshToken);
+    this.tokenCache.set(channelId, {
+      accessToken: tokenResult.accessToken,
+      expiresAt: Date.now() + (tokenResult.expiresIn || 3600) * 1000,
+    });
+    return tokenResult.accessToken;
+  }
+
+  /**
+   * Clears cached access token for a channel (e.g. after HTTP 401).
+   */
+  public clearAccessTokenCache(channelId: string): void {
+    this.tokenCache.delete(channelId);
   }
 
   /**
@@ -111,7 +198,8 @@ export class YouTubeService {
     });
 
     if (!res.ok) {
-      throw new Error(`YouTube channels.list failed with HTTP ${res.status}`);
+      const err = await this.captureSanitizedError(res, 'channels.list');
+      throw new Error(err);
     }
 
     const json = (await res.json()) as any;
@@ -128,6 +216,115 @@ export class YouTubeService {
       title: snippet.title || 'Unknown Channel',
       customUrl: snippet.customUrl || null,
     };
+  }
+
+  /**
+   * Queries authenticated user's own broadcasts via liveBroadcasts.list.
+   * Valid filter parameters: broadcastStatus OR mine, never both, and never passing channelId as broadcastId.
+   */
+  public async checkAuthenticatedBroadcasts(
+    accessToken: string,
+    options?: { broadcastStatus?: 'active' | 'all' | 'completed' | 'upcoming'; mine?: boolean; broadcastId?: string }
+  ): Promise<any[]> {
+    if (options?.broadcastId) {
+      if (options.broadcastId.startsWith('UC') || (options.broadcastId.length > 20 && options.broadcastId.includes('UC'))) {
+        throw new Error(`Invalid broadcast ID '${options.broadcastId}': Channel ID must not be passed as broadcast ID`);
+      }
+    }
+
+    let url: string;
+    if (options?.broadcastId) {
+      url = `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&id=${encodeURIComponent(options.broadcastId)}`;
+    } else if (options?.mine) {
+      url = 'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&mine=true';
+    } else {
+      const statusParam = options?.broadcastStatus || 'active';
+      url = `https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&broadcastStatus=${encodeURIComponent(statusParam)}`;
+    }
+
+    const bRes = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!bRes.ok) {
+      const err = await this.captureSanitizedError(bRes, 'liveBroadcasts.list');
+      throw new Error(err);
+    }
+
+    const bData = (await bRes.json()) as any;
+    return bData.items || [];
+  }
+
+  /**
+   * Queries arbitrary linked channel live status using YouTube Data API search.list.
+   */
+  public async checkChannelViaSearch(
+    channelId: string,
+    auth?: { accessToken?: string; apiKey?: string }
+  ): Promise<any[]> {
+    const key = auth?.apiKey || this.apiKey;
+    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&channelId=${encodeURIComponent(channelId)}&type=video&eventType=live&maxResults=1`;
+    if (key) {
+      url += `&key=${encodeURIComponent(key)}`;
+    }
+
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+    };
+    if (auth?.accessToken) {
+      headers['Authorization'] = `Bearer ${auth.accessToken}`;
+    }
+
+    const sRes = await fetch(url, { headers });
+    if (!sRes.ok) {
+      const err = await this.captureSanitizedError(sRes, 'search.list');
+      throw new Error(err);
+    }
+
+    const sData = (await sRes.json()) as any;
+    return sData.items || [];
+  }
+
+  /**
+   * Queries video details (category and topic details) for game classification.
+   */
+  public async getVideoMetadata(
+    videoId: string,
+    auth?: { accessToken?: string; apiKey?: string }
+  ): Promise<{ categoryId: string; topicCategories: string[]; title: string }> {
+    const key = auth?.apiKey || this.apiKey;
+    let vUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,topicDetails&id=${encodeURIComponent(videoId)}`;
+    if (key) {
+      vUrl += `&key=${encodeURIComponent(key)}`;
+    }
+
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (auth?.accessToken) {
+      headers['Authorization'] = `Bearer ${auth.accessToken}`;
+    }
+
+    const vRes = await fetch(vUrl, { headers });
+    let categoryId = '';
+    let topicCategories: string[] = [];
+    let title = '';
+
+    if (vRes.ok) {
+      const vData = (await vRes.json()) as any;
+      if (vData.items && vData.items.length > 0) {
+        const item = vData.items[0];
+        categoryId = item.snippet?.categoryId || '';
+        title = item.snippet?.title || '';
+        topicCategories = item.topicDetails?.topicCategories || [];
+      }
+    } else {
+      const err = await this.captureSanitizedError(vRes, 'videos.list');
+      console.warn(`[YouTube] Failed to fetch video metadata: ${err}`);
+    }
+
+    return { categoryId, topicCategories, title };
   }
 
   /**
@@ -154,115 +351,120 @@ export class YouTubeService {
 
     // 2. Lookup account record to get refresh token
     const account = await db.getYouTubeAccount(channelId);
-    if (!account) {
+
+    if (!account && !this.apiKey) {
       return {
         status: 'OFFLINE',
         isLive: false,
         isMinecraft: false,
         checkedAt: now,
-        expiresAt: new Date(now.getTime() + 60_000),
+        expiresAt: new Date(now.getTime() + 60_000), // Sensible 60s cache
         error: 'Channel account not registered in MCast',
       };
     }
 
-    // 3. Decrypt refresh token and obtain fresh access token
-    let accessToken: string;
-    try {
-      const refreshToken = decryptToken(account.encrypted_refresh_token, account.token_iv, account.token_auth_tag);
-      const tokenResult = await this.refreshAccessToken(refreshToken);
-      accessToken = tokenResult.accessToken;
-    } catch (err: any) {
-      console.warn(`[YouTube] Failed to refresh token for channel ${channelId}:`, err.message);
-      // Retain stale status if available during temporary Google token error
-      if (cached) {
+    let accessToken: string | undefined;
+    if (account) {
+      try {
+        const refreshToken = decryptToken(account.encrypted_refresh_token, account.token_iv, account.token_auth_tag);
+        accessToken = await this.getAccessTokenForChannel(channelId, refreshToken);
+      } catch (err: any) {
+        const sanitized = sanitizeApiError(err.message, 400);
+        this.logErrorThrottled(channelId, `Failed to refresh token: ${sanitized}`);
+        if (cached) {
+          return {
+            status: cached.status,
+            isLive: cached.is_live,
+            isMinecraft: cached.is_minecraft,
+            videoId: cached.video_id || undefined,
+            title: cached.title || undefined,
+            streamUrl: cached.stream_url || undefined,
+            checkedAt: cached.checked_at,
+            expiresAt: new Date(now.getTime() + 60_000),
+            error: 'Stale: Refresh token temporarily rejected',
+          };
+        }
         return {
-          status: cached.status,
-          isLive: cached.is_live,
-          isMinecraft: cached.is_minecraft,
-          videoId: cached.video_id || undefined,
-          title: cached.title || undefined,
-          streamUrl: cached.stream_url || undefined,
-          checkedAt: cached.checked_at,
-          expiresAt: new Date(now.getTime() + 30_000),
-          error: 'Stale: Refresh token temporarily rejected',
+          status: 'UNKNOWN',
+          isLive: false,
+          isMinecraft: false,
+          checkedAt: now,
+          expiresAt: new Date(now.getTime() + 60_000),
+          error: sanitized,
         };
       }
-      return {
-        status: 'UNKNOWN',
-        isLive: false,
-        isMinecraft: false,
-        checkedAt: now,
-        expiresAt: new Date(now.getTime() + 30_000),
-        error: err.message,
-      };
     }
 
-    // 4. Query active live broadcasts (1 quota unit)
     try {
-      const activeUrl = 'https://www.googleapis.com/youtube/v3/liveBroadcasts?part=snippet,status&broadcastStatus=active&mine=true';
-      const bRes = await fetch(activeUrl, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: 'application/json',
-        },
-      });
+      let broadcastId: string | null = null;
+      let broadcastTitle = '';
 
-      if (!bRes.ok) {
-        throw new Error(`liveBroadcasts.list failed with HTTP ${bRes.status}`);
+      if (accessToken) {
+        try {
+          // 3a. Check user's own broadcast using liveBroadcasts.list with valid broadcastStatus=active
+          let items: any[];
+          try {
+            items = await this.checkAuthenticatedBroadcasts(accessToken, { broadcastStatus: 'active' });
+          } catch (bErr: any) {
+            // Handle expired access token (HTTP 401): clear cache, refresh once, and retry
+            if (bErr.message?.includes('401') && account) {
+              this.clearAccessTokenCache(channelId);
+              const refreshToken = decryptToken(account.encrypted_refresh_token, account.token_iv, account.token_auth_tag);
+              accessToken = await this.getAccessTokenForChannel(channelId, refreshToken);
+              items = await this.checkAuthenticatedBroadcasts(accessToken, { broadcastStatus: 'active' });
+            } else {
+              throw bErr;
+            }
+          }
+
+          if (items.length > 0) {
+            broadcastId = items[0].id;
+            broadcastTitle = items[0].snippet?.title || '';
+          }
+        } catch (authErr: any) {
+          // If liveBroadcasts fails, fallback to search.list for this channel
+          this.logErrorThrottled(channelId, `liveBroadcasts fallback to search: ${authErr.message}`);
+          const searchItems = await this.checkChannelViaSearch(channelId, { accessToken, apiKey: this.apiKey });
+          if (searchItems.length > 0) {
+            broadcastId = searchItems[0].id?.videoId || null;
+            broadcastTitle = searchItems[0].snippet?.title || '';
+          }
+        }
+      } else {
+        // 3b. Arbitrary channel without account: check via search.list with API key
+        const searchItems = await this.checkChannelViaSearch(channelId, { apiKey: this.apiKey });
+        if (searchItems.length > 0) {
+          broadcastId = searchItems[0].id?.videoId || null;
+          broadcastTitle = searchItems[0].snippet?.title || '';
+        }
       }
 
-      const bData = (await bRes.json()) as any;
-      const items = bData.items || [];
-
-      if (items.length === 0) {
+      // If no active broadcast was found, channel is OFFLINE
+      if (!broadcastId) {
         const result: LiveBroadcastResult = {
           status: 'OFFLINE',
           isLive: false,
           isMinecraft: false,
           checkedAt: now,
-          expiresAt: new Date(now.getTime() + 60_000), // Cache 60s
+          expiresAt: new Date(now.getTime() + 60_000), // Sensible 60s cache
         };
         await this.persistCache(channelId, result);
         return result;
       }
 
-      const activeBroadcast = items[0];
-      const broadcastId = activeBroadcast.id;
-      const broadcastTitle = activeBroadcast.snippet?.title || '';
+      // 4. Query video metadata for Minecraft eligibility
       const streamUrl = `https://www.youtube.com/watch?v=${broadcastId}`;
+      const videoMeta = await this.getVideoMetadata(broadcastId, { accessToken, apiKey: this.apiKey });
+      const videoTitle = videoMeta.title || broadcastTitle;
 
-      // 5. Query video details for categoryId and topicDetails (1 quota unit)
-      const vUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,topicDetails&id=${encodeURIComponent(broadcastId)}`;
-      const vRes = await fetch(vUrl, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: 'application/json',
-        },
-      });
-
-      let categoryId = '';
-      let topicCategories: string[] = [];
-      let videoTitle = broadcastTitle;
-
-      if (vRes.ok) {
-        const vData = (await vRes.json()) as any;
-        if (vData.items && vData.items.length > 0) {
-          const vItem = vData.items[0];
-          categoryId = vItem.snippet?.categoryId || '';
-          videoTitle = vItem.snippet?.title || broadcastTitle;
-          topicCategories = vItem.topicDetails?.topicCategories || [];
-        }
-      }
-
-      // 6. Eligibility Verification Logic
-      const isGaming = categoryId === GAMING_CATEGORY_ID;
-      const hasMinecraftTopic = topicCategories.some(t =>
+      const isGaming = videoMeta.categoryId === GAMING_CATEGORY_ID;
+      const hasMinecraftTopic = videoMeta.topicCategories.some(t =>
         t.toLowerCase() === MINECRAFT_TOPIC_WIKI.toLowerCase() || t.toLowerCase().endsWith('/minecraft')
       );
       const titleMentionsMinecraft = videoTitle.toLowerCase().includes('minecraft');
 
       const isMinecraft = hasMinecraftTopic || (isGaming && titleMentionsMinecraft);
-      const status = isMinecraft ? 'LIVE_MINECRAFT' : (isGaming ? 'LIVE_NOT_MINECRAFT' : 'LIVE_NOT_MINECRAFT');
+      const status = isMinecraft ? 'LIVE_MINECRAFT' : 'LIVE_NOT_MINECRAFT';
 
       const result: LiveBroadcastResult = {
         status,
@@ -272,13 +474,15 @@ export class YouTubeService {
         title: videoTitle,
         streamUrl,
         checkedAt: now,
-        expiresAt: new Date(now.getTime() + 60_000), // Cache 60s
+        expiresAt: new Date(now.getTime() + 60_000), // Sensible 60s cache
       };
 
       await this.persistCache(channelId, result);
       return result;
     } catch (err: any) {
-      console.warn(`[YouTube] Error checking live broadcasts for ${channelId}:`, err.message);
+      const sanitized = sanitizeApiError(err.message, 500);
+      this.logErrorThrottled(channelId, `Error checking live status: ${sanitized}`);
+
       if (cached) {
         return {
           status: cached.status,
@@ -288,18 +492,21 @@ export class YouTubeService {
           title: cached.title || undefined,
           streamUrl: cached.stream_url || undefined,
           checkedAt: cached.checked_at,
-          expiresAt: new Date(now.getTime() + 30_000),
-          error: 'Stale: ' + err.message,
+          expiresAt: new Date(now.getTime() + 60_000),
+          error: 'Stale: ' + sanitized,
         };
       }
-      return {
+
+      const errResult: LiveBroadcastResult = {
         status: 'UNKNOWN',
         isLive: false,
         isMinecraft: false,
         checkedAt: now,
-        expiresAt: new Date(now.getTime() + 30_000),
-        error: err.message,
+        expiresAt: new Date(now.getTime() + 60_000),
+        error: sanitized,
       };
+      await this.persistCache(channelId, errResult);
+      return errResult;
     }
   }
 
