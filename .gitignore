@@ -30,6 +30,8 @@ Thumbs.db
 run/
 logs/
 .env*
+*.env
+render.env
 !.env.example
 client_secret*.json
 node_modules/
