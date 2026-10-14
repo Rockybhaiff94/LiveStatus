@@ -73,12 +73,15 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Initialize database and start server if run directly
+// Initialize database asynchronously and start server immediately
 if (process.env.NODE_ENV !== 'test') {
-  db.init().then(() => {
-    app.listen(PORT, () => {
-      console.log(`[MCast Backend] Listening on port ${PORT}`);
-      console.log(`[MCast Backend] OAuth Redirect URI: ${process.env.GOOGLE_REDIRECT_URI || 'https://api.mcast.fun/v1/oauth/callback'}`);
+  app.listen(PORT, () => {
+    console.log(`[MCast Backend] Listening on port ${PORT}`);
+    console.log(`[MCast Backend] OAuth Redirect URI: ${process.env.GOOGLE_REDIRECT_URI || 'https://api.mcast.fun/v1/oauth/callback'}`);
+
+    // Asynchronously connect to DB without blocking HTTP server
+    db.init().catch(err => {
+      console.error('[DB] Background initialization error:', err);
     });
   });
 }

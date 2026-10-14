@@ -78,7 +78,7 @@ public class MCastApiClient {
         this.identity = Objects.requireNonNull(identity, "identity");
         this.logger = Objects.requireNonNull(logger, "logger");
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                .connectTimeout(Duration.ofSeconds(20))
                 .build();
     }
 
@@ -103,7 +103,7 @@ public class MCastApiClient {
                 .uri(URI.create(baseUrl + "/v1/servers/register"))
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(20))
                 .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
                 .build();
 
@@ -270,7 +270,7 @@ public class MCastApiClient {
                 .header("Authorization", "Bearer " + identity.getServerSecret())
                 .header("Content-Type", "application/json")
                 .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(15))
                 .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(body)))
                 .build();
 

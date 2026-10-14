@@ -82,12 +82,18 @@ class DatabaseStore {
   constructor() {
     const dbUrl = process.env.DATABASE_URL;
     if (dbUrl && !dbUrl.includes('localhost:5432/mcast_unreachable')) {
+      if (dbUrl.includes('[YOUR-PASSWORD]') || dbUrl.includes('[YOUR_PASSWORD]')) {
+        this.lastConnectionError = 'DATABASE_URL contains placeholder password [YOUR-PASSWORD]. Update with your real database password.';
+        console.warn('[DB] ' + this.lastConnectionError + ' Operating in resilient in-memory mode.');
+        return;
+      }
       try {
         this.pool = new pg.Pool({
           connectionString: dbUrl,
           ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
-          max: 20,
+          max: 10,
           idleTimeoutMillis: 30000,
+          connectionTimeoutMillis: 4000,
         });
       } catch (err: any) {
         this.lastConnectionError = err?.message || 'Pool initialization failed';
@@ -106,7 +112,11 @@ class DatabaseStore {
       return;
     }
     try {
-      const client = await this.pool.connect();
+      const connectPromise = this.pool.connect();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('PostgreSQL connection timed out (4s)')), 4000)
+      );
+      const client = await Promise.race([connectPromise, timeoutPromise]);
       try {
         await client.query('ALTER TABLE youtube_accounts ADD COLUMN IF NOT EXISTS avatar_url TEXT;');
       } catch (err: any) {
