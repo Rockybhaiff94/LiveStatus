@@ -194,12 +194,19 @@ public class LiveStatusScheduler implements Runnable {
             return false;
         }
         if (linked == null || !linked.isLinked()) {
-            return false;
+            if (accountStorage == null || accountStorage.findByUuid(player.getUniqueId()).isEmpty()) {
+                return false;
+            }
         }
-        if (config.isRequireAdminApproval() && !linkService.isAuthorizedToLink(player.getUniqueId())) {
-            return false;
+        if (config.isRequireAdminApproval()) {
+            if (allowedStorage != null && !allowedStorage.isAllowed(player.getUniqueId())) {
+                return false;
+            }
+            if (linkService != null && !linkService.isAuthorizedToLink(player.getUniqueId())) {
+                return false;
+            }
         }
-        YouTubeStatus status = linked.getStatus();
+        YouTubeStatus status = linked != null ? linked.getStatus() : null;
         return status != null && status.isLiveIndicatorEligible();
     }
 
