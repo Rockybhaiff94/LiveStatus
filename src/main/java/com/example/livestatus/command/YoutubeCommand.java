@@ -703,8 +703,12 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
                             } else if (mStatus.status() == YouTubeStatus.NOT_LINKED && (mStatus.error() == null || mStatus.error().isBlank())) {
                                 linkService.updateAccount(target.getUniqueId(), false, null);
                             }
-                            linkService.updateStatus(target.getUniqueId(), mStatus.status(), mStatus.error());
-                            renderer.accept(mStatus.status());
+                            YouTubeStatus effectiveStatus = mStatus.status();
+                            if (plugin != null && plugin.getPluginConfig() != null && !plugin.getPluginConfig().isRequireMinecraft() && mStatus.isLive()) {
+                                effectiveStatus = YouTubeStatus.LIVE_MINECRAFT;
+                            }
+                            linkService.updateStatus(target.getUniqueId(), effectiveStatus, mStatus.error());
+                            renderer.accept(effectiveStatus);
                         } else {
                             renderer.accept(linkService.get(target.getUniqueId()).map(LinkedPlayer::getStatus).orElse(YouTubeStatus.UNKNOWN));
                         }

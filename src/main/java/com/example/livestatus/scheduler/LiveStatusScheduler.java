@@ -136,7 +136,11 @@ public class LiveStatusScheduler implements Runnable {
                                 } else if (status.status() == YouTubeStatus.NOT_LINKED && (status.error() == null || status.error().isBlank())) {
                                     linkService.updateAccount(uuid, false, null);
                                 }
-                                linkService.updateStatus(uuid, status.status(), status.error());
+                                YouTubeStatus effectiveStatus = status.status();
+                                if (!config.isRequireMinecraft() && status.isLive()) {
+                                    effectiveStatus = YouTubeStatus.LIVE_MINECRAFT;
+                                }
+                                linkService.updateStatus(uuid, effectiveStatus, status.error());
                             }
 
                             syncVisualIndicators();
@@ -228,8 +232,12 @@ public class LiveStatusScheduler implements Runnable {
                     } else if (s.status() == YouTubeStatus.NOT_LINKED && (s.error() == null || s.error().isBlank())) {
                         linkService.updateAccount(uuid, false, null);
                     }
-                    linkService.updateStatus(uuid, s.status(), s.error());
-                    if (s.status().isLiveIndicatorEligible()) {
+                    YouTubeStatus effectiveStatus = s.status();
+                    if (!config.isRequireMinecraft() && s.isLive()) {
+                        effectiveStatus = YouTubeStatus.LIVE_MINECRAFT;
+                    }
+                    linkService.updateStatus(uuid, effectiveStatus, s.error());
+                    if (effectiveStatus.isLiveIndicatorEligible()) {
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             if (player.isOnline()) {
                                 nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());

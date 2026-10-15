@@ -12,29 +12,41 @@ export const MINECRAFT_FREEBASE_MID = '/m/09v6kpg';
 export function extractGameTitleFromHtml(html: string): string | null {
   if (!html) return null;
 
-  // 1. Box Art richMetadataRenderer (Standard for gaming streams)
+  // 1. YouTube official Minecraft topic channel link
+  if (html.includes('/channel/UCQvWX73GQygcwXOTSf_VDVg') || html.includes('UCQvWX73GQygcwXOTSf_VDVg')) {
+    return 'Minecraft';
+  }
+
+  // 2. Modern YouTube videoAttributeViewModel (2024-2026 YouTube watch page format)
+  const portraitAttrMatch1 = html.match(/"imageStyle":\s*"VIDEO_ATTRIBUTE_IMAGE_STYLE_PORTRAIT"[^}]*?"title":\s*"([^"]+)"/);
+  if (portraitAttrMatch1) return portraitAttrMatch1[1];
+
+  const portraitAttrMatch2 = html.match(/"title":\s*"([^"]+)"[^}]*?"imageStyle":\s*"VIDEO_ATTRIBUTE_IMAGE_STYLE_PORTRAIT"/);
+  if (portraitAttrMatch2) return portraitAttrMatch2[1];
+
+  // 3. Box Art richMetadataRenderer (Standard for gaming streams)
   const boxArtMatch1 = html.match(/"richMetadataRenderer":\s*\{[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}[^}]*?"style":\s*"RICH_METADATA_RENDERER_STYLE_BOX_ART"/);
   if (boxArtMatch1) return boxArtMatch1[1];
 
   const boxArtMatch2 = html.match(/"style":\s*"RICH_METADATA_RENDERER_STYLE_BOX_ART"[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
   if (boxArtMatch2) return boxArtMatch2[1];
 
-  // 2. Browse game call-to-action
+  // 4. Browse game call-to-action
   const browseGameMatch1 = html.match(/"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}[^}]*?"callToAction":\s*\{\s*"simpleText":\s*"Browse game"/);
   if (browseGameMatch1) return browseGameMatch1[1];
 
   const browseGameMatch2 = html.match(/"callToAction":\s*\{\s*"simpleText":\s*"Browse game"[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
   if (browseGameMatch2) return browseGameMatch2[1];
 
-  // 3. metadataRowRenderer Game row
+  // 5. metadataRowRenderer Game row
   const gameRowMatch = html.match(/"title":\s*\{\s*"runs":\s*\[\s*\{\s*"text":\s*"Game"\s*\}\s*\]\s*\},\s*"contents":\s*\[\s*\{\s*"runs":\s*\[\s*\{\s*"text":\s*"([^"]+)"/);
   if (gameRowMatch) return gameRowMatch[1];
 
-  // 4. Compact metadata gameTitle
+  // 6. Compact metadata gameTitle
   const gameTitleMatch = html.match(/"gameTitle":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
   if (gameTitleMatch) return gameTitleMatch[1];
 
-  // 5. HTML meta tags
+  // 7. HTML meta tags
   const metaMatch = html.match(/<meta\s+itemprop="game"\s+content="([^"]+)"/i);
   if (metaMatch) return metaMatch[1];
 

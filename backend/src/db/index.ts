@@ -88,12 +88,13 @@ class DatabaseStore {
         return;
       }
       try {
+        const isSupabase = dbUrl.includes('supabase.co') || dbUrl.includes('pooler.supabase.com');
         this.pool = new pg.Pool({
           connectionString: dbUrl,
-          ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+          ssl: (process.env.NODE_ENV === 'production' || isSupabase) ? { rejectUnauthorized: false } : undefined,
           max: 10,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 4000,
+          connectionTimeoutMillis: 5000,
         });
       } catch (err: any) {
         this.lastConnectionError = err?.message || 'Pool initialization failed';
