@@ -185,6 +185,7 @@ class DatabaseStore {
             last_error TEXT
           );
 
+          ALTER TABLE youtube_accounts ADD COLUMN IF NOT EXISTS avatar_url TEXT;
           CREATE INDEX IF NOT EXISTS idx_server_player_links_player ON server_player_links(player_uuid);
         `);
         console.log('[DB] Schema bootstrap complete (all tables ensured).');
