@@ -323,6 +323,7 @@ public class MCastApiClient {
                                 case "LIVE_MINECRAFT" -> YouTubeStatus.LIVE_MINECRAFT;
                                 case "LIVE_NOT_MINECRAFT" -> YouTubeStatus.LIVE_NOT_MINECRAFT;
                                 case "OFFLINE" -> YouTubeStatus.OFFLINE;
+                                case "NOT_LINKED" -> YouTubeStatus.NOT_LINKED;
                                 default -> YouTubeStatus.UNKNOWN;
                             };
 

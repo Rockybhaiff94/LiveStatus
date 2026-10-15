@@ -5,6 +5,9 @@ import com.example.livestatus.player.LinkedPlayer;
 import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.youtube.YouTubeAccount;
 import com.example.livestatus.youtube.YouTubeStatus;
+import com.example.livestatus.storage.AccountRecord;
+import com.example.livestatus.storage.AccountStorage;
+import com.example.livestatus.storage.JsonAccountStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,12 +25,14 @@ class PlayerLinkServiceTest {
     Path tempDir;
 
     private AllowedPlayersStorage storage;
+    private AccountStorage accountStorage;
     private PlayerLinkService linkService;
 
     @BeforeEach
     void setUp() {
         this.storage = new AllowedPlayersStorage(tempDir.toFile(), Logger.getLogger("TestLogger"));
-        this.linkService = new PlayerLinkService(storage);
+        this.accountStorage = new JsonAccountStorage(tempDir.toFile(), Logger.getLogger("TestLogger"));
+        this.linkService = new PlayerLinkService(storage, accountStorage);
     }
 
     @Test
@@ -116,6 +121,65 @@ class PlayerLinkServiceTest {
         linkService.updateStatus(pokeUuid, YouTubeStatus.OFFLINE, null);
         assertFalse(poke.getStatus().isLiveIndicatorEligible());
         assertFalse(alex.getStatus().isLiveIndicatorEligible());
+    }
+
+    @Test
+    @DisplayName("16. Previously linked account is automatically restored after player rejoin")
+    void testAccountRestoredOnRejoin() {
+        UUID uuid = UUID.randomUUID();
+        linkService.allowLink(uuid, "PersistentStreamer");
+        linkService.updateAccount(uuid, true, new YouTubeAccount("UC_persistent", "Persistent Channel", "@persistent"));
+
+        // Simulate server restart: new PlayerLinkService instance pointing to same accountStorage
+        PlayerLinkService freshService = new PlayerLinkService(storage, accountStorage);
+        LinkedPlayer restoredPlayer = freshService.getOrCreate(uuid, "PersistentStreamer");
+
+        assertTrue(restoredPlayer.isLinked());
+        assertNotNull(restoredPlayer.getAccount());
+        assertEquals("UC_persistent", restoredPlayer.getAccount().channelId());
+        assertEquals("Persistent Channel", restoredPlayer.getAccount().channelTitle());
+    }
+
+    @Test
+    @DisplayName("17. Unlinked player remains unlinked on rejoin")
+    void testUnlinkedPlayerRemainsUnlinked() {
+        UUID uuid = UUID.randomUUID();
+        LinkedPlayer player = linkService.getOrCreate(uuid, "UnlinkedPlayer");
+
+        assertFalse(player.isLinked());
+        assertNull(player.getAccount());
+        assertEquals(YouTubeStatus.UNKNOWN, player.getStatus());
+
+        // Rejoin on fresh service instance
+        PlayerLinkService freshService = new PlayerLinkService(storage, accountStorage);
+        LinkedPlayer rejoined = freshService.getOrCreate(uuid, "UnlinkedPlayer");
+
+        assertFalse(rejoined.isLinked());
+        assertNull(rejoined.getAccount());
+    }
+
+    @Test
+    @DisplayName("18. Explicit unlink deletes persistent record and prevents legacy resurrection")
+    void testExplicitUnlinkRemovesPersistentRecord() {
+        UUID uuid = UUID.randomUUID();
+        linkService.allowLink(uuid, "UnlinkStreamer");
+        linkService.updateAccount(uuid, true, new YouTubeAccount("UC_unlink_me", "To Be Unlinked", null));
+
+        assertTrue(linkService.get(uuid).orElseThrow().isLinked());
+        assertTrue(accountStorage.findByUuid(uuid).isPresent());
+
+        // Explicit unlink
+        linkService.unlink(uuid);
+
+        assertFalse(linkService.get(uuid).orElseThrow().isLinked());
+        assertFalse(accountStorage.findByUuid(uuid).isPresent());
+
+        // Restart simulation
+        PlayerLinkService freshService = new PlayerLinkService(storage, accountStorage);
+        LinkedPlayer restarted = freshService.getOrCreate(uuid, "UnlinkStreamer");
+
+        assertFalse(restarted.isLinked());
+        assertNull(restarted.getAccount());
     }
 }
 

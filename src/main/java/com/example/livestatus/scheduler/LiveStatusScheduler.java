@@ -10,6 +10,7 @@ import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.storage.AccountStorage;
 import com.example.livestatus.youtube.YouTubeAccount;
 import com.example.livestatus.youtube.YouTubeService;
+import com.example.livestatus.youtube.YouTubeStatus;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
@@ -128,8 +129,12 @@ public class LiveStatusScheduler implements Runnable {
                                 MCastApiClient.PlayerLiveStatus status = entry.getValue();
 
                                 if (status.linked()) {
-                                    YouTubeAccount ytAccount = new YouTubeAccount(status.channelId(), status.channelTitle(), null);
-                                    linkService.updateAccount(uuid, true, ytAccount);
+                                    if (status.channelId() != null && !status.channelId().isBlank()) {
+                                        YouTubeAccount ytAccount = new YouTubeAccount(status.channelId(), status.channelTitle(), null);
+                                        linkService.updateAccount(uuid, true, ytAccount);
+                                    }
+                                } else if (status.status() == YouTubeStatus.NOT_LINKED && (status.error() == null || status.error().isBlank())) {
+                                    linkService.updateAccount(uuid, false, null);
                                 }
                                 linkService.updateStatus(uuid, status.status(), status.error());
                             }
@@ -217,13 +222,23 @@ public class LiveStatusScheduler implements Runnable {
                 MCastApiClient.PlayerLiveStatus s = results.get(uuid);
                 if (s != null) {
                     if (s.linked()) {
-                        linkService.updateAccount(uuid, true, new YouTubeAccount(s.channelId(), s.channelTitle(), null));
+                        if (s.channelId() != null && !s.channelId().isBlank()) {
+                            linkService.updateAccount(uuid, true, new YouTubeAccount(s.channelId(), s.channelTitle(), null));
+                        }
+                    } else if (s.status() == YouTubeStatus.NOT_LINKED && (s.error() == null || s.error().isBlank())) {
+                        linkService.updateAccount(uuid, false, null);
                     }
-                    linkService.updateStatus(uuid, s.status(), null);
+                    linkService.updateStatus(uuid, s.status(), s.error());
                     if (s.status().isLiveIndicatorEligible()) {
                         Bukkit.getScheduler().runTask(plugin, () -> {
                             if (player.isOnline()) {
                                 nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+                            }
+                        });
+                    } else {
+                        Bukkit.getScheduler().runTask(plugin, () -> {
+                            if (player.isOnline()) {
+                                nametagProvider.removeLiveIndicator(player);
                             }
                         });
                     }

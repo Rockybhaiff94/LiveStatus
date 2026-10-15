@@ -696,8 +696,12 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
                         MCastApiClient.PlayerLiveStatus mStatus = results.get(target.getUniqueId());
                         if (mStatus != null) {
                             if (mStatus.linked()) {
-                                YouTubeAccount ytAccount = new YouTubeAccount(mStatus.channelId(), mStatus.channelTitle(), null);
-                                linkService.updateAccount(target.getUniqueId(), true, ytAccount);
+                                if (mStatus.channelId() != null && !mStatus.channelId().isBlank()) {
+                                    YouTubeAccount ytAccount = new YouTubeAccount(mStatus.channelId(), mStatus.channelTitle(), null);
+                                    linkService.updateAccount(target.getUniqueId(), true, ytAccount);
+                                }
+                            } else if (mStatus.status() == YouTubeStatus.NOT_LINKED && (mStatus.error() == null || mStatus.error().isBlank())) {
+                                linkService.updateAccount(target.getUniqueId(), false, null);
                             }
                             linkService.updateStatus(target.getUniqueId(), mStatus.status(), mStatus.error());
                             renderer.accept(mStatus.status());

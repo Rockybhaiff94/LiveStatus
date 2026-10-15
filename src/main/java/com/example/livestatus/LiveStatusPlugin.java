@@ -16,6 +16,7 @@ import com.example.livestatus.oauth.OAuthCallbackServer;
 import com.example.livestatus.oauth.OAuthService;
 import com.example.livestatus.oauth.OAuthStateManager;
 import com.example.livestatus.player.AllowedPlayersStorage;
+import com.example.livestatus.player.LinkedPlayer;
 import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.scheduler.LiveStatusScheduler;
 import com.example.livestatus.stats.PluginStatistics;
@@ -101,7 +102,7 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.accountStorage = jsonStorage;
         this.streamerConfigStore = new StreamerConfigStore(getDataFolder(), getLogger());
         this.statistics = new PluginStatistics();
-        this.linkService = new PlayerLinkService(allowedStorage);
+        this.linkService = new PlayerLinkService(allowedStorage, accountStorage);
 
         // Extended Systems: History, Server Links, Premium, Web Security & Audit
         this.liveHistoryStorage = new LiveHistoryStorage(getDataFolder(), getLogger());
@@ -123,8 +124,12 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
         // Preload stored accounts into in-memory link service
         for (AccountRecord record : accountStorage.getAllAccounts()) {
-            YouTubeAccount ytAccount = new YouTubeAccount(record.youtubeChannelId(), record.channelTitle(), record.customUrl());
-            linkService.updateAccount(record.minecraftUuid(), true, ytAccount);
+            if (record.youtubeChannelId() != null && !record.youtubeChannelId().isBlank()) {
+                LinkedPlayer lp = linkService.getOrCreate(record.minecraftUuid(), record.playerName());
+                YouTubeAccount ytAccount = new YouTubeAccount(record.youtubeChannelId(), record.channelTitle(), record.customUrl());
+                lp.setLinked(true);
+                lp.setAccount(ytAccount);
+            }
         }
 
         // 2. Initialize OAuth & YouTube Detection Services

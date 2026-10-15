@@ -11,6 +11,7 @@ public class TopicCategoryDetector implements StreamEligibilityDetector {
 
     public static final String GAMING_CATEGORY_ID = "20";
     public static final String MINECRAFT_TOPIC_WIKI = "https://en.wikipedia.org/wiki/Minecraft";
+    public static final String MINECRAFT_FREEBASE_MID = "/m/09v6kpg";
 
     private final boolean requireGamingCategory;
     private final boolean requireMinecraftTopic;
@@ -23,7 +24,7 @@ public class TopicCategoryDetector implements StreamEligibilityDetector {
     }
 
     public TopicCategoryDetector() {
-        this(true, true, false);
+        this(true, true, true);
     }
 
     @Override
@@ -32,47 +33,37 @@ public class TopicCategoryDetector implements StreamEligibilityDetector {
             return Eligibility.NOT_LIVE;
         }
 
+        // Condition 2: Title contains Minecraft as recognizable game name (case-insensitive)
+        String title = (video != null && video.title() != null && !video.title().isBlank())
+                ? video.title()
+                : broadcast.title();
+        boolean titleMentionsMinecraft = title != null && title.toLowerCase().contains("minecraft");
+
+        if (titleMentionsMinecraft) {
+            return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+        }
+
         if (video == null) {
-            // Cannot verify game metadata safely; fail closed
             return Eligibility.UNKNOWN;
         }
 
-        // 1. Verify Gaming Category
-        if (requireGamingCategory) {
-            if (!GAMING_CATEGORY_ID.equals(video.categoryId())) {
-                return Eligibility.NOT_MINECRAFT;
+        // Condition 1: YouTube game/category metadata identifies Minecraft
+        boolean hasMinecraftTopic = false;
+        List<String> topics = video.topicCategories();
+        if (topics != null) {
+            for (String topic : topics) {
+                if (topic != null && (topic.equalsIgnoreCase(MINECRAFT_TOPIC_WIKI) || topic.toLowerCase().contains("minecraft"))) {
+                    hasMinecraftTopic = true;
+                    break;
+                }
             }
         }
 
-        // 2. Verify Minecraft Topic via official YouTube Topic Details
-        if (requireMinecraftTopic) {
-            boolean hasMinecraftTopic = false;
-            List<String> topics = video.topicCategories();
-            if (topics != null) {
-                for (String topic : topics) {
-                    if (topic != null && (topic.equalsIgnoreCase(MINECRAFT_TOPIC_WIKI) || topic.toLowerCase().endsWith("/minecraft"))) {
-                        hasMinecraftTopic = true;
-                        break;
-                    }
-                }
-            }
-
-            if (hasMinecraftTopic) {
-                return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
-            }
-
-            // 3. Fallback rule: only if explicitly enabled in configuration
-            if (allowTitleFallback) {
-                String title = video.title();
-                if (title != null && title.toLowerCase().contains("minecraft")) {
-                    return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
-                }
-            }
-
-            return Eligibility.NOT_MINECRAFT;
+        if (hasMinecraftTopic) {
+            return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
         }
 
-        return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+        return Eligibility.NOT_MINECRAFT;
     }
 }
 

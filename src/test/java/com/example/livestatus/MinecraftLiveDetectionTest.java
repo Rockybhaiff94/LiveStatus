@@ -90,13 +90,55 @@ class MinecraftLiveDetectionTest {
     }
 
     @Test
-    @DisplayName("13. Missing video metadata fails closed to UNKNOWN")
+    @DisplayName("13. Missing video metadata fails closed to UNKNOWN when title does not mention Minecraft")
     void testMissingVideoFailsClosed() {
         StreamEligibilityDetector.BroadcastMetadata live = new StreamEligibilityDetector.BroadcastMetadata(
                 "bc_6", "Stream", "live", "public"
         );
 
         assertEquals(StreamEligibilityDetector.Eligibility.UNKNOWN, detector.detectEligibility(live, null));
+    }
+
+    @Test
+    @DisplayName("14. Title 'test' with Minecraft game/topic qualifies as ELIGIBLE_MINECRAFT_LIVE")
+    void testTitleTestWithMinecraftCategory() {
+        StreamEligibilityDetector.BroadcastMetadata live = new StreamEligibilityDetector.BroadcastMetadata(
+                "bc_test", "test", "live", "public"
+        );
+        StreamEligibilityDetector.VideoMetadata video = new StreamEligibilityDetector.VideoMetadata(
+                "bc_test", "20", List.of("https://en.wikipedia.org/wiki/Minecraft_(video_game)"),
+                "test", "Playing some games"
+        );
+
+        assertEquals(StreamEligibilityDetector.Eligibility.ELIGIBLE_MINECRAFT_LIVE, detector.detectEligibility(live, video));
+    }
+
+    @Test
+    @DisplayName("15. Title 'Minecraft Survival' with unavailable game/topics qualifies via title")
+    void testTitleMentionsMinecraftWithoutCategory() {
+        StreamEligibilityDetector.BroadcastMetadata live = new StreamEligibilityDetector.BroadcastMetadata(
+                "bc_mc_title", "Minecraft Survival", "live", "public"
+        );
+        StreamEligibilityDetector.VideoMetadata video = new StreamEligibilityDetector.VideoMetadata(
+                "bc_mc_title", "", List.of(),
+                "Minecraft Survival", ""
+        );
+
+        assertEquals(StreamEligibilityDetector.Eligibility.ELIGIBLE_MINECRAFT_LIVE, detector.detectEligibility(live, video));
+    }
+
+    @Test
+    @DisplayName("16. Stream description mentioning Minecraft does NOT qualify when title and game are non-Minecraft")
+    void testDescriptionNotUsedForClassification() {
+        StreamEligibilityDetector.BroadcastMetadata live = new StreamEligibilityDetector.BroadcastMetadata(
+                "bc_chat", "Just Chatting with Chat", "live", "public"
+        );
+        StreamEligibilityDetector.VideoMetadata video = new StreamEligibilityDetector.VideoMetadata(
+                "bc_chat", "24", List.of(),
+                "Just Chatting with Chat", "I love playing Minecraft on weekends, but today we talk!"
+        );
+
+        assertEquals(StreamEligibilityDetector.Eligibility.NOT_MINECRAFT, detector.detectEligibility(live, video));
     }
 }
 

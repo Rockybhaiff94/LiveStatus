@@ -3,6 +3,43 @@ import { decryptToken } from '../crypto/encryption.js';
 
 export const GAMING_CATEGORY_ID = '20';
 export const MINECRAFT_TOPIC_WIKI = 'https://en.wikipedia.org/wiki/Minecraft';
+export const MINECRAFT_FREEBASE_MID = '/m/09v6kpg';
+
+/**
+ * Parses game/category title directly from YouTube watch page HTML/ytInitialData.
+ * Zero quota cost, supports creator studio game selection even when topicCategories is unassigned or lagged.
+ */
+export function extractGameTitleFromHtml(html: string): string | null {
+  if (!html) return null;
+
+  // 1. Box Art richMetadataRenderer (Standard for gaming streams)
+  const boxArtMatch1 = html.match(/"richMetadataRenderer":\s*\{[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}[^}]*?"style":\s*"RICH_METADATA_RENDERER_STYLE_BOX_ART"/);
+  if (boxArtMatch1) return boxArtMatch1[1];
+
+  const boxArtMatch2 = html.match(/"style":\s*"RICH_METADATA_RENDERER_STYLE_BOX_ART"[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
+  if (boxArtMatch2) return boxArtMatch2[1];
+
+  // 2. Browse game call-to-action
+  const browseGameMatch1 = html.match(/"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}[^}]*?"callToAction":\s*\{\s*"simpleText":\s*"Browse game"/);
+  if (browseGameMatch1) return browseGameMatch1[1];
+
+  const browseGameMatch2 = html.match(/"callToAction":\s*\{\s*"simpleText":\s*"Browse game"[^}]*?"title":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
+  if (browseGameMatch2) return browseGameMatch2[1];
+
+  // 3. metadataRowRenderer Game row
+  const gameRowMatch = html.match(/"title":\s*\{\s*"runs":\s*\[\s*\{\s*"text":\s*"Game"\s*\}\s*\]\s*\},\s*"contents":\s*\[\s*\{\s*"runs":\s*\[\s*\{\s*"text":\s*"([^"]+)"/);
+  if (gameRowMatch) return gameRowMatch[1];
+
+  // 4. Compact metadata gameTitle
+  const gameTitleMatch = html.match(/"gameTitle":\s*\{\s*"simpleText":\s*"([^"]+)"\s*\}/);
+  if (gameTitleMatch) return gameTitleMatch[1];
+
+  // 5. HTML meta tags
+  const metaMatch = html.match(/<meta\s+itemprop="game"\s+content="([^"]+)"/i);
+  if (metaMatch) return metaMatch[1];
+
+  return null;
+}
 
 export interface ChannelProfile {
   channelId: string;
@@ -303,12 +340,12 @@ export class YouTubeService {
   }
 
   /**
-   * Queries video details (category and topic details) for game classification.
+   * Queries video details (category, topic details, topicIds, and tags) for game classification.
    */
   public async getVideoMetadata(
     videoId: string,
     auth?: { accessToken?: string; apiKey?: string }
-  ): Promise<{ categoryId: string; topicCategories: string[]; title: string }> {
+  ): Promise<{ categoryId: string; topicCategories: string[]; topicIds: string[]; tags: string[]; title: string }> {
     const key = auth?.apiKey || this.apiKey;
     let vUrl = `https://www.googleapis.com/youtube/v3/videos?part=snippet,topicDetails&id=${encodeURIComponent(videoId)}`;
     if (key) {
@@ -323,6 +360,8 @@ export class YouTubeService {
     const vRes = await fetch(vUrl, { headers });
     let categoryId = '';
     let topicCategories: string[] = [];
+    let topicIds: string[] = [];
+    let tags: string[] = [];
     let title = '';
 
     if (vRes.ok) {
@@ -331,14 +370,44 @@ export class YouTubeService {
         const item = vData.items[0];
         categoryId = item.snippet?.categoryId || '';
         title = item.snippet?.title || '';
+        tags = item.snippet?.tags || [];
         topicCategories = item.topicDetails?.topicCategories || [];
+        const tIds = item.topicDetails?.topicIds || [];
+        const relIds = item.topicDetails?.relevantTopicIds || [];
+        topicIds = [...tIds, ...relIds];
       }
     } else {
       const err = await this.captureSanitizedError(vRes, 'videos.list');
       console.warn(`[YouTube] Failed to fetch video metadata: ${err}`);
     }
 
-    return { categoryId, topicCategories, title };
+    return { categoryId, topicCategories, topicIds, tags, title };
+  }
+
+  /**
+   * Fetches game/category title from YouTube watch page HTML/ytInitialData.
+   * Zero quota cost, supports creator studio game selection even when topicCategories is unassigned or lagged.
+   */
+  public async fetchWatchPageGameTitle(videoId: string): Promise<string | null> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+      const res = await fetch(`https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html',
+        },
+      });
+      clearTimeout(timeout);
+      if (!res.ok) return null;
+
+      const html = await res.text();
+      return extractGameTitleFromHtml(html);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -496,14 +565,35 @@ export class YouTubeService {
       const videoMeta = await this.getVideoMetadata(broadcastId, { accessToken, apiKey: this.apiKey });
       const videoTitle = videoMeta.title || broadcastTitle;
 
-      const isGaming = videoMeta.categoryId === GAMING_CATEGORY_ID;
-      const hasMinecraftTopic = videoMeta.topicCategories.some(t =>
-        t.toLowerCase() === MINECRAFT_TOPIC_WIKI.toLowerCase() || t.toLowerCase().endsWith('/minecraft')
-      );
+      // Condition 2: YouTube's actual livestream title contains Minecraft (case-insensitive)
       const titleMentionsMinecraft = videoTitle.toLowerCase().includes('minecraft');
 
-      const isMinecraft = hasMinecraftTopic || (isGaming && titleMentionsMinecraft);
+      // Condition 1: YouTube's actual livestream game/category metadata identifies Minecraft
+      const hasMinecraftTopicWiki = videoMeta.topicCategories.some(t =>
+        t.toLowerCase().includes('minecraft')
+      );
+      const hasMinecraftTopicId = (videoMeta.topicIds || []).some(id =>
+        id.toLowerCase() === MINECRAFT_FREEBASE_MID.toLowerCase()
+      );
+      const isGaming = videoMeta.categoryId === GAMING_CATEGORY_ID;
+      const hasMinecraftTag = isGaming && (videoMeta.tags || []).some(tag => {
+        const lower = tag.toLowerCase().trim();
+        return lower === 'minecraft' || lower.startsWith('minecraft ') || lower.endsWith(' minecraft');
+      });
+
+      // If game metadata is not verified yet from API, inspect the YouTube watch page HTML for the creator's selected game
+      let watchPageGame: string | null = null;
+      if (!hasMinecraftTopicWiki && !hasMinecraftTopicId && !hasMinecraftTag) {
+        watchPageGame = await this.fetchWatchPageGameTitle(broadcastId);
+      }
+      const hasMinecraftGameTitle = !!watchPageGame && watchPageGame.toLowerCase().includes('minecraft');
+
+      const hasMinecraftMetadata = hasMinecraftTopicWiki || hasMinecraftTopicId || hasMinecraftTag || hasMinecraftGameTitle;
+      const isMinecraft = hasMinecraftMetadata || titleMentionsMinecraft;
       const status = isMinecraft ? 'LIVE_MINECRAFT' : 'LIVE_NOT_MINECRAFT';
+
+      // Use a shorter cache TTL (30s) for LIVE_NOT_MINECRAFT so corrected stream metadata updates promptly
+      const cacheTtlMs = status === 'LIVE_NOT_MINECRAFT' ? 30_000 : 60_000;
 
       const result: LiveBroadcastResult = {
         status,
@@ -513,7 +603,7 @@ export class YouTubeService {
         title: videoTitle,
         streamUrl,
         checkedAt: now,
-        expiresAt: new Date(now.getTime() + 60_000), // Sensible 60s cache
+        expiresAt: new Date(now.getTime() + cacheTtlMs),
       };
 
       await this.persistCache(channelId, result);

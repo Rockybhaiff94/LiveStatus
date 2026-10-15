@@ -295,6 +295,212 @@ describe('YouTube Service & Live-Status Checker', () => {
       expect(result.isLive).toBe(true);
       expect(result.isMinecraft).toBe(false);
       expect(result.videoId).toBe('vid_chess_123');
+      // Verify shorter 30s cache TTL for LIVE_NOT_MINECRAFT so corrections update promptly
+      const ttlMs = result.expiresAt.getTime() - result.checkedAt.getTime();
+      expect(ttlMs).toBeLessThanOrEqual(35_000);
+      expect(ttlMs).toBeGreaterThanOrEqual(25_000);
+    });
+
+    it('should report LIVE_MINECRAFT when title is "test" and creator selected Minecraft game', async () => {
+      const testTitleChannelId = 'UC_title_test_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('mock_refresh_title_test');
+      await db.upsertYouTubeAccount({
+        channel_id: testTitleChannelId,
+        channel_title: 'Test Title Streamer',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(JSON.stringify({ access_token: 'valid_token_xyz', expires_in: 3600 }), { status: 200 });
+        }
+        if (urlStr.includes('liveBroadcasts')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ id: 'vid_test_stream_1', snippet: { title: 'test' } }],
+            }),
+            { status: 200 }
+          );
+        }
+        if (urlStr.includes('videos?')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ snippet: { title: 'test', categoryId: GAMING_CATEGORY_ID }, topicDetails: { topicCategories: [] } }],
+            }),
+            { status: 200 }
+          );
+        }
+        if (urlStr.includes('youtube.com/watch?v=')) {
+          // Watch page HTML contains Minecraft box art metadata
+          const mockHtml = `
+            <html><body>
+              <script>
+                var ytInitialData = {
+                  "richMetadataRenderer": {
+                    "style": "RICH_METADATA_RENDERER_STYLE_BOX_ART",
+                    "title": { "simpleText": "Minecraft" }
+                  }
+                };
+              </script>
+            </body></html>
+          `;
+          return new Response(mockHtml, { status: 200 });
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(testTitleChannelId);
+
+      expect(result.status).toBe('LIVE_MINECRAFT');
+      expect(result.isLive).toBe(true);
+      expect(result.isMinecraft).toBe(true);
+      expect(result.title).toBe('test');
+    });
+
+    it('should report LIVE_MINECRAFT when topicCategory is Wikipedia Minecraft_(video_game)', async () => {
+      const wikiChannelId = 'UC_wiki_mc_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('mock_refresh_wiki');
+      await db.upsertYouTubeAccount({
+        channel_id: wikiChannelId,
+        channel_title: 'Wiki MC Streamer',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(JSON.stringify({ access_token: 'valid_token_xyz', expires_in: 3600 }), { status: 200 });
+        }
+        if (urlStr.includes('liveBroadcasts')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ id: 'vid_wiki_1', snippet: { title: 'test' } }],
+            }),
+            { status: 200 }
+          );
+        }
+        if (urlStr.includes('videos?')) {
+          return new Response(
+            JSON.stringify({
+              items: [
+                {
+                  snippet: { title: 'test', categoryId: GAMING_CATEGORY_ID },
+                  topicDetails: { topicCategories: ['https://en.wikipedia.org/wiki/Minecraft_(video_game)'] },
+                },
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(wikiChannelId);
+
+      expect(result.status).toBe('LIVE_MINECRAFT');
+      expect(result.isLive).toBe(true);
+      expect(result.isMinecraft).toBe(true);
+    });
+
+    it('should report LIVE_MINECRAFT when title is "Minecraft Survival" with unavailable category', async () => {
+      const titleChannelId = 'UC_title_only_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('mock_refresh_title_only');
+      await db.upsertYouTubeAccount({
+        channel_id: titleChannelId,
+        channel_title: 'Survival Streamer',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(JSON.stringify({ access_token: 'valid_token_xyz', expires_in: 3600 }), { status: 200 });
+        }
+        if (urlStr.includes('liveBroadcasts')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ id: 'vid_mc_title_1', snippet: { title: 'Minecraft Survival Season 2' } }],
+            }),
+            { status: 200 }
+          );
+        }
+        if (urlStr.includes('videos?')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ snippet: { title: 'Minecraft Survival Season 2', categoryId: '' }, topicDetails: { topicCategories: [] } }],
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(titleChannelId);
+
+      expect(result.status).toBe('LIVE_MINECRAFT');
+      expect(result.isLive).toBe(true);
+      expect(result.isMinecraft).toBe(true);
+    });
+
+    it('should NOT classify as Minecraft based on stream description when title and game are non-Minecraft', async () => {
+      const chatChannelId = 'UC_chat_only_' + Math.random().toString(36).slice(2, 8);
+      const enc = encryptToken('mock_refresh_chat');
+      await db.upsertYouTubeAccount({
+        channel_id: chatChannelId,
+        channel_title: 'Chat Streamer',
+        custom_url: null,
+        encrypted_refresh_token: enc.ciphertext,
+        token_iv: enc.iv,
+        token_auth_tag: enc.authTag,
+        token_status: 'active',
+        last_refreshed_at: new Date(),
+      });
+
+      global.fetch = vi.fn(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('oauth2.googleapis.com/token')) {
+          return new Response(JSON.stringify({ access_token: 'valid_token_xyz', expires_in: 3600 }), { status: 200 });
+        }
+        if (urlStr.includes('liveBroadcasts')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ id: 'vid_chat_1', snippet: { title: 'Just Chatting', description: 'Playing Minecraft later!' } }],
+            }),
+            { status: 200 }
+          );
+        }
+        if (urlStr.includes('videos?')) {
+          return new Response(
+            JSON.stringify({
+              items: [{ snippet: { title: 'Just Chatting', categoryId: '24', description: 'Minecraft stream later' }, topicDetails: { topicCategories: [] } }],
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response('Not found', { status: 404 });
+      });
+
+      const result = await service.checkChannelLiveStatus(chatChannelId);
+
+      expect(result.status).toBe('LIVE_NOT_MINECRAFT');
+      expect(result.isLive).toBe(true);
+      expect(result.isMinecraft).toBe(false);
     });
   });
 
