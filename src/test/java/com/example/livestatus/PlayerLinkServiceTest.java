@@ -5,7 +5,6 @@ import com.example.livestatus.player.LinkedPlayer;
 import com.example.livestatus.player.PlayerLinkService;
 import com.example.livestatus.youtube.YouTubeAccount;
 import com.example.livestatus.youtube.YouTubeStatus;
-import com.example.livestatus.storage.AccountRecord;
 import com.example.livestatus.storage.AccountStorage;
 import com.example.livestatus.storage.JsonAccountStorage;
 import org.junit.jupiter.api.BeforeEach;

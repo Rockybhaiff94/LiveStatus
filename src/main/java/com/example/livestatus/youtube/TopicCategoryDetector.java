@@ -34,36 +34,57 @@ public class TopicCategoryDetector implements StreamEligibilityDetector {
         }
 
         // Condition 2: Title contains Minecraft as recognizable game name (case-insensitive)
-        String title = (video != null && video.title() != null && !video.title().isBlank())
-                ? video.title()
-                : broadcast.title();
-        boolean titleMentionsMinecraft = title != null && title.toLowerCase().contains("minecraft");
-
-        if (titleMentionsMinecraft) {
-            return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+        if (allowTitleFallback) {
+            String title = (video != null && video.title() != null && !video.title().isBlank())
+                    ? video.title()
+                    : (broadcast != null ? broadcast.title() : null);
+            if (title != null && title.toLowerCase().contains("minecraft")) {
+                return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+            }
         }
 
         if (video == null) {
             return Eligibility.UNKNOWN;
         }
 
-        // Condition 1: YouTube game/category metadata identifies Minecraft
-        boolean hasMinecraftTopic = false;
-        List<String> topics = video.topicCategories();
-        if (topics != null) {
-            for (String topic : topics) {
-                if (topic != null && (topic.equalsIgnoreCase(MINECRAFT_TOPIC_WIKI) || topic.toLowerCase().contains("minecraft"))) {
-                    hasMinecraftTopic = true;
-                    break;
+        // 1. Verify Gaming Category if required
+        if (requireGamingCategory && !GAMING_CATEGORY_ID.equals(video.categoryId())) {
+            return Eligibility.NOT_MINECRAFT;
+        }
+
+        // 2. Condition 1: YouTube game/category metadata identifies Minecraft
+        if (requireMinecraftTopic) {
+            boolean hasMinecraftTopic = false;
+            List<String> topics = video.topicCategories();
+            if (topics != null) {
+                for (String topic : topics) {
+                    if (topic != null && (topic.equalsIgnoreCase(MINECRAFT_TOPIC_WIKI) || topic.toLowerCase().contains("minecraft"))) {
+                        hasMinecraftTopic = true;
+                        break;
+                    }
                 }
             }
+
+            if (hasMinecraftTopic) {
+                return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+            }
+
+            return Eligibility.NOT_MINECRAFT;
         }
 
-        if (hasMinecraftTopic) {
-            return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
-        }
+        return Eligibility.ELIGIBLE_MINECRAFT_LIVE;
+    }
 
-        return Eligibility.NOT_MINECRAFT;
+    public boolean isRequireGamingCategory() {
+        return requireGamingCategory;
+    }
+
+    public boolean isRequireMinecraftTopic() {
+        return requireMinecraftTopic;
+    }
+
+    public boolean isAllowTitleFallback() {
+        return allowTitleFallback;
     }
 }
 

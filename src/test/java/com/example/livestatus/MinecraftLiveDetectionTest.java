@@ -16,7 +16,7 @@ class MinecraftLiveDetectionTest {
 
     @BeforeEach
     void setUp() {
-        this.detector = new TopicCategoryDetector(true, true, false);
+        this.detector = new TopicCategoryDetector(true, true, true);
     }
 
     @Test
