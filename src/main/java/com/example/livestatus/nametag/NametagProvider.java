@@ -38,5 +38,10 @@ public interface NametagProvider {
      * Cleans up all applied indicators and restores original states across all players.
      */
     void cleanUpAll();
+
+    /**
+     * Synchronizes active live indicators onto a newly connected viewer's scoreboard.
+     */
+    default void onViewerJoin(Player viewer) {}
 }
 

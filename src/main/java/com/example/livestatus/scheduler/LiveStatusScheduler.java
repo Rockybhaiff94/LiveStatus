@@ -22,8 +22,8 @@ import java.util.logging.Logger;
 
 /**
  * Asynchronous polling engine that checks active live broadcast status
- * via the centralized MCast API and triggers nametag visual updates on the main thread
- * ONLY when status transitions occur. Avoids overlapping polling cycles.
+ * via the centralized MCast API and reliably reconciles nametag visual indicators
+ * on the main server thread.
  */
 public class LiveStatusScheduler implements Runnable {
 
@@ -32,6 +32,8 @@ public class LiveStatusScheduler implements Runnable {
     private final MCastApiClient mcastApiClient;
     private final YouTubeService youTubeService;
     private final PlayerLinkService linkService;
+    private final AllowedPlayersStorage allowedStorage;
+    private final AccountStorage accountStorage;
     private final NametagProvider nametagProvider;
     private final LiveIndicatorRenderer indicatorRenderer;
     private final Logger logger;
@@ -55,6 +57,8 @@ public class LiveStatusScheduler implements Runnable {
         this.mcastApiClient = mcastApiClient;
         this.youTubeService = youTubeService;
         this.linkService = linkService;
+        this.allowedStorage = allowedStorage;
+        this.accountStorage = accountStorage;
         this.nametagProvider = nametagProvider;
         this.indicatorRenderer = indicatorRenderer;
         this.logger = logger;
@@ -97,7 +101,7 @@ public class LiveStatusScheduler implements Runnable {
         // Prevent overlapping polling executions
         if (!isPolling.compareAndSet(false, true)) {
             if (config.isDebugEnabled()) {
-                logger.info("Skipping polling cycle: previous cycle is still in progress.");
+                logger.info("[LiveStatus] Skipping polling cycle: previous cycle is still in progress.");
             }
             return;
         }
@@ -117,6 +121,7 @@ public class LiveStatusScheduler implements Runnable {
             // Strictly on-demand: Zero network requests when no authorized players are online
             if (targetUuids.isEmpty()) {
                 isPolling.set(false);
+                syncVisualIndicators();
                 return;
             }
 
@@ -147,7 +152,7 @@ public class LiveStatusScheduler implements Runnable {
                         })
                         .exceptionally(ex -> {
                             if (config.isDebugEnabled()) {
-                                logger.warning("Error during MCast live status polling: " + ex.getMessage());
+                                logger.warning("[LiveStatus] Error during MCast live status polling: " + ex.getMessage());
                             }
                             return null;
                         })
@@ -161,7 +166,7 @@ public class LiveStatusScheduler implements Runnable {
                         .thenAccept(results -> syncVisualIndicators())
                         .exceptionally(ex -> {
                             if (config.isDebugEnabled()) {
-                                logger.warning("Error during live status polling cycle: " + ex.getMessage());
+                                logger.warning("[LiveStatus] Error during live status polling cycle: " + ex.getMessage());
                             }
                             return null;
                         })
@@ -173,42 +178,72 @@ public class LiveStatusScheduler implements Runnable {
         } catch (Throwable t) {
             isPolling.set(false);
             if (config.isDebugEnabled()) {
-                logger.warning("Unexpected error during polling cycle: " + t.getMessage());
+                logger.warning("[LiveStatus] Unexpected error during polling cycle: " + t.getMessage());
             }
         }
     }
 
-    private void syncVisualIndicators() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            UUID uuid = player.getUniqueId();
-            Optional<LinkedPlayer> optLinked = linkService.get(uuid);
-            if (optLinked.isEmpty()) {
-                continue;
-            }
-
-            LinkedPlayer linked = optLinked.get();
-            // Only perform nametag operations if the LIVE eligibility state actually changed!
-            if (linked.hasVisualIndicatorChanged()) {
-                boolean nowEligible = linked.getStatus().isLiveIndicatorEligible();
-                if (config.isDebugEnabled()) {
-                    logger.info("Player " + player.getName() + " visual state transition: " +
-                            linked.getPreviousStatus() + " -> " + linked.getStatus() +
-                            " (eligible=" + nowEligible + ")");
-                }
-
-                // Scoreboard modifications must execute on the Minecraft main server thread
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (!player.isOnline()) {
-                        return;
-                    }
-                    if (nowEligible) {
-                        nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
-                    } else {
-                        nametagProvider.removeLiveIndicator(player);
-                    }
-                });
-            }
+    /**
+     * Determines whether a player should currently display the LIVE indicator nametag.
+     */
+    public boolean isEligibleForLiveIndicator(Player player, LinkedPlayer linked) {
+        if (player == null || !player.isOnline()) {
+            return false;
         }
+        if (!config.isNametagEnabled()) {
+            return false;
+        }
+        if (linked == null || !linked.isLinked()) {
+            return false;
+        }
+        if (config.isRequireAdminApproval() && !linkService.isAuthorizedToLink(player.getUniqueId())) {
+            return false;
+        }
+        YouTubeStatus status = linked.getStatus();
+        return status != null && status.isLiveIndicatorEligible();
+    }
+
+    /**
+     * Reconciles visual indicators across all online players on the Minecraft server main thread.
+     * Safely checks desired vs actual indicator state without relying exclusively on status transitions.
+     */
+    public void syncVisualIndicators() {
+        if (plugin == null || !plugin.isEnabled()) {
+            return;
+        }
+
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                UUID uuid = player.getUniqueId();
+                Optional<LinkedPlayer> optLinked = linkService.get(uuid);
+                LinkedPlayer linked = optLinked.orElse(null);
+
+                boolean desired = isEligibleForLiveIndicator(player, linked);
+                boolean actual = nametagProvider.hasLiveIndicator(player);
+
+                if (desired) {
+                    nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
+                    if (config.isDebugEnabled() && !actual) {
+                        logger.info(String.format(
+                                "[LiveStatus] Applied LIVE indicator to %s (%s) [status=%s, authorized=%s, linked=%s]",
+                                player.getName(), uuid, linked != null ? linked.getStatus() : "null",
+                                (!config.isRequireAdminApproval() || linkService.isAuthorizedToLink(uuid)),
+                                (linked != null && linked.isLinked())
+                        ));
+                    }
+                } else if (actual) {
+                    nametagProvider.removeLiveIndicator(player);
+                    if (config.isDebugEnabled()) {
+                        logger.info(String.format(
+                                "[LiveStatus] Removed LIVE indicator from %s (%s) [status=%s, authorized=%s, linked=%s]",
+                                player.getName(), uuid, linked != null ? linked.getStatus() : "null",
+                                (!config.isRequireAdminApproval() || linkService.isAuthorizedToLink(uuid)),
+                                (linked != null && linked.isLinked())
+                        ));
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -237,34 +272,25 @@ public class LiveStatusScheduler implements Runnable {
                         effectiveStatus = YouTubeStatus.LIVE_MINECRAFT;
                     }
                     linkService.updateStatus(uuid, effectiveStatus, s.error());
-                    if (effectiveStatus.isLiveIndicatorEligible()) {
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (player.isOnline()) {
-                                nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
-                            }
-                        });
-                    } else {
-                        Bukkit.getScheduler().runTask(plugin, () -> {
-                            if (player.isOnline()) {
-                                nametagProvider.removeLiveIndicator(player);
-                            }
-                        });
-                    }
+                    syncVisualIndicators();
                 }
+            }).exceptionally(ex -> {
+                if (config.isDebugEnabled()) {
+                    logger.warning("[LiveStatus] Error during immediate status check for " + player.getName() + ": " + ex.getMessage());
+                }
+                return null;
             });
             return;
         }
 
         if (youTubeService != null) {
             youTubeService.checkStatus(uuid).thenAccept(status -> {
-                Optional<LinkedPlayer> opt = linkService.get(uuid);
-                if (opt.isPresent() && opt.get().getStatus().isLiveIndicatorEligible()) {
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (player.isOnline()) {
-                            nametagProvider.applyLiveIndicator(player, indicatorRenderer.render(), config.getSeparator());
-                        }
-                    });
+                syncVisualIndicators();
+            }).exceptionally(ex -> {
+                if (config.isDebugEnabled()) {
+                    logger.warning("[LiveStatus] Error checking status for " + player.getName() + ": " + ex.getMessage());
                 }
+                return null;
             });
         }
     }

@@ -53,5 +53,12 @@ public class CompositeNametagProvider implements NametagProvider {
             provider.cleanUpAll();
         }
     }
+
+    @Override
+    public void onViewerJoin(Player viewer) {
+        for (NametagProvider provider : providers) {
+            provider.onViewerJoin(viewer);
+        }
+    }
 }
 

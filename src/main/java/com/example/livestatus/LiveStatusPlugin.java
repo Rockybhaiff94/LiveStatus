@@ -36,6 +36,7 @@ import com.example.livestatus.web.AuditLogger;
 import com.example.livestatus.web.WebSecurityManager;
 import com.example.livestatus.web.WebServerManager;
 import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -369,11 +370,16 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        if (nametagProvider != null) {
+            nametagProvider.onViewerJoin(player);
+        }
         if (scheduler != null) {
-            scheduler.checkPlayerImmediate(event.getPlayer());
+            scheduler.checkPlayerImmediate(player);
+            scheduler.syncVisualIndicators();
         }
         if (serverLinkTracker != null) {
-            serverLinkTracker.recordJoin(event.getPlayer().getUniqueId(), event.getPlayer().getName(), "default", "direct_join");
+            serverLinkTracker.recordJoin(player.getUniqueId(), player.getName(), "default", "direct_join");
         }
     }
 
@@ -382,6 +388,10 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         if (nametagProvider != null) {
             nametagProvider.cleanUp(event.getPlayer());
         }
+    }
+
+    public LiveStatusScheduler getLiveStatusScheduler() {
+        return scheduler;
     }
 
     public PluginConfig getPluginConfig() {

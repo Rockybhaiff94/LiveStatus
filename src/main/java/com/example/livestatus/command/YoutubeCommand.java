@@ -616,6 +616,13 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
 
         boolean revoked = linkService.revokeLink(target.getUniqueId());
         if (revoked) {
+            Player onlineTarget = target.getPlayer();
+            if (onlineTarget != null && onlineTarget.isOnline()) {
+                plugin.getNametagProvider().removeLiveIndicator(onlineTarget);
+            }
+            if (plugin != null && plugin.getLiveStatusScheduler() != null) {
+                plugin.getLiveStatusScheduler().syncVisualIndicators();
+            }
             sender.sendMessage(Component.text("Revoked YouTube linking authorization for ", NamedTextColor.YELLOW)
                     .append(Component.text(targetName, NamedTextColor.RED)));
         } else {
@@ -709,6 +716,9 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
                             }
                             linkService.updateStatus(target.getUniqueId(), effectiveStatus, mStatus.error());
                             renderer.accept(effectiveStatus);
+                            if (plugin != null && plugin.getLiveStatusScheduler() != null) {
+                                plugin.getLiveStatusScheduler().syncVisualIndicators();
+                            }
                         } else {
                             renderer.accept(linkService.get(target.getUniqueId()).map(LinkedPlayer::getStatus).orElse(YouTubeStatus.UNKNOWN));
                         }
@@ -718,7 +728,12 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
                         return null;
                     });
         } else {
-            youTubeService.checkStatus(target.getUniqueId()).thenAccept(renderer::accept);
+            youTubeService.checkStatus(target.getUniqueId()).thenAccept(status -> {
+                renderer.accept(status);
+                if (plugin != null && plugin.getLiveStatusScheduler() != null) {
+                    plugin.getLiveStatusScheduler().syncVisualIndicators();
+                }
+            });
         }
     }
 
@@ -740,6 +755,9 @@ public class YoutubeCommand implements CommandExecutor, TabCompleter {
         Player onlineTarget = target.getPlayer();
         if (onlineTarget != null && onlineTarget.isOnline()) {
             plugin.getNametagProvider().removeLiveIndicator(onlineTarget);
+        }
+        if (plugin != null && plugin.getLiveStatusScheduler() != null) {
+            plugin.getLiveStatusScheduler().syncVisualIndicators();
         }
 
         if (unlinked) {
