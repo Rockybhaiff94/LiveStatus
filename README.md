@@ -1,203 +1,167 @@
-# LiveStatus
+# MCast (LiveStatus)
 
-> **You only need one Paper plugin JAR.**
->
-> There is **NO** separate backend process, **NO** backend JAR, **NO** backend URL, **NO** external API key, and **NO** second plugin. Everything runs directly inside `LiveStatus-1.0.0.jar` on your Minecraft Paper server.
+[![PaperMC](https://img.shields.io/badge/Paper-1.21.x-blue.svg)](https://papermc.io)
+[![Java](https://img.shields.io/badge/Java-21%2B-orange.svg)](https://www.oracle.com/java/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Web Portal](https://img.shields.io/badge/Portal-mcast.fun-FF7A00.svg)](https://mcast.fun)
 
-**LiveStatus** is a production-quality, self-contained Minecraft Paper plugin that adds a sleek, non-destructive **LIVE** indicator to an authorized player's existing in-game nametag when, and **ONLY** when:
+> **MCast: Full-stack Minecraft YouTube live-stream platform with centralized OAuth, in-game LIVE nametags, automated chat broadcasts, and web portal.**
 
-1. The player has been explicitly enabled by a Minecraft server administrator (`/youtube allow-link <player>` or `/livestatus allow-link <player>`).
-2. The player has linked their own YouTube account via Google OAuth 2.0 (`/link youtube`).
-3. That linked YouTube account is currently broadcasting live.
-4. The active YouTube broadcast is a verified Minecraft gaming stream.
+**MCast** connects Minecraft servers with YouTube Live broadcasting. When an authorized player goes live streaming Minecraft on YouTube, MCast seamlessly adds an elegant, non-destructive **LIVE** badge next to their in-game nametag, delivers fair anti-spam chat announcements, and provides players with a web dashboard at **[mcast.fun](https://mcast.fun)**.
 
-If all four conditions are met:
+With the centralized MCast architecture, **server administrators do not need Google Cloud accounts, API keys, or complex port forwarding**. The plugin works right out of the box.
+
 ```
 [VIP] PokeHowlet LIVE
 ```
-When the stream ends or switches to another game (e.g. GTA V, Fortnite, or Just Chatting):
+*When the stream ends or switches to another game (e.g. GTA V or Fortnite), the badge disappears automatically:*
 ```
 [VIP] PokeHowlet
 ```
 
-> [!IMPORTANT]
-> The player is already inside Minecraft, so the plugin **never** displays `LIVE Minecraft` or `PokeHowlet LIVE Minecraft`. Only `LIVE` is appended as a clean suffix layer.
+---
+
+## Architecture Overview
+
+MCast is a complete monorepo ecosystem designed for performance, security, and scalability:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                              MCast Monorepo                            │
+├───────────────────────┬────────────────────────┬───────────────────────┤
+│ 🎮 Minecraft Plugin   │ ⚡ Central Backend API  │ 🌐 Web Portal         │
+│ (src/)                │ (backend/)             │ (website/)            │
+│                       │                        │                       │
+│ • Paper 1.21+ API     │ • Express + TypeScript │ • Next.js 16 (React 19)│
+│ • Non-destructive team│ • PostgreSQL (Supabase)│ • Tailwind CSS v4     │
+│   nametag suffix      │ • AES-256-GCM token    │ • Google OAuth flow   │
+│ • Adventure chat      │   encryption           │ • Streamer dashboard  │
+│   announcements       │ • Batch YouTube polling│ • Deployed on Vercel  │
+│ • Out-of-the-box ready│ • Deployed on Render   │   (mcast.fun)         │
+└───────────────────────┴────────────────────────┴───────────────────────┘
+```
+
+1. **Minecraft Paper Plugin (`src/`)**: Drop-in Paper 1.21+ JAR. Maintains scoreboard prefixes/suffixes non-destructively, handles player commands (`/youtube`, `/link youtube`), and schedules async polling without blocking the main server tick.
+2. **Central Backend API (`backend/`)**: Node.js/TypeScript microservice that securely handles Google OAuth 2.0 token exchanges, cryptographic CSRF validation, server identity verification, and efficient batch live-status checks against YouTube Data API v3.
+3. **Web Portal & Dashboard (`website/`)**: Modern web application hosted at [mcast.fun](https://mcast.fun) where streamers link their YouTube accounts, check their active stream statuses, and inspect channel diagnostics.
 
 ---
 
 ## Key Highlights
 
-* **Single Self-Contained JAR**: Drop `plugins/LiveStatus-1.0.0.jar` into your Paper server. The Minecraft server acts as its own OAuth callback receiver and API monitor.
-* **No Client Mods Required**: Operates 100% server-side on standard Paper servers using the official Paper API.
-* **Non-Destructive Suffix Layer**: Preserves all existing nametag prefixes, suffixes, scoreboard teams, and display names set by plugins like LuckPerms, EssentialsX, TAB, or NameTagEdit.
-* **Centralized Live Stream Chat Announcements**: Rich clickable Adventure messages broadcasting live streams with fair randomized rotation, independent cooldowns, global anti-spam protection, and full admin enforcement.
-* **Zero Main-Thread Blocking**: All YouTube API queries, Google token refreshes, and disk operations execute asynchronously. Nametag and chat changes are scheduled onto the main server thread safely.
-* **Fail-Closed Security**: If YouTube or network connections fail, the LIVE tag and announcements are suppressed to prevent stale false-positive indicators.
+* **Zero Cloud Setup for Server Owners**: Centralized OAuth handles Google token exchanges and refreshes securely through `mcast.fun`. Server owners never need to create a Google Cloud Project or manage OAuth credentials.
+* **Non-Destructive Nametag Suffix**: Integrates cleanly with existing permissions and nametag plugins (LuckPerms, EssentialsX, TAB, NameTagEdit) without overwriting player prefixes, suffixes, or scoreboard teams.
+* **Automated Fair Chat Broadcasts**: Centralized Adventure MiniMessage announcements with independent streamer cooldowns, random interval rotation, anti-spam safeguards, and full administrator overrides.
+* **Accurate Game Detection**: Verifies active live broadcasts against YouTube's Gaming category (`categoryId: 20`) and Minecraft canonical topic IDs (`/m/09s1f`). Prevents false-positives when streamers play other games or chat.
+* **Fail-Closed Security**: If YouTube API is unreachable or network connectivity drops, badges and broadcasts safely fail closed to eliminate stale indicator bugs.
+* **Cross-Server Auto-Linking**: Streamers who link their YouTube account once are recognized across all servers connected to MCast.
 
 ---
 
-## Project Structure
+## Monorepo Structure
 
 ```
-LiveStatus/
-├── build.gradle.kts                      # Single Gradle build (Paper API, Java 21 toolchain, JUnit 5)
-├── settings.gradle.kts                   # Single project settings
-├── gradlew & gradlew.bat                 # Gradle wrapper
-├── README.md                             # Main documentation
-├── docs/
-│   ├── SETUP.md                         # Step-by-step setup guide
-│   ├── OAUTH.md                         # Google Cloud & OAuth 2.0 setup guide
-│   ├── ADMIN.md                         # Command syntax & permission reference
-│   └── COMPATIBILITY.md                 # Nametag preservation & PAPI integration
-└── src/
-    ├── main/
-    │   ├── java/com/example/livestatus/
-    │   │   ├── LiveStatusPlugin.java    # Paper plugin lifecycle & DI
-    │   │   ├── command/
-    │   │   │   ├── YoutubeCommand.java      # Admin commands (/youtube, /livestatus)
-    │   │   │   └── LinkYoutubeCommand.java  # Player command (/link youtube)
-    │   │   ├── config/
-    │   │   │   └── PluginConfig.java        # Configuration with ${ENV} support
-    │   │   ├── youtube/
-    │   │   │   ├── YouTubeStatus.java       # LiveStatus enum (5 states)
-    │   │   │   ├── YouTubeBroadcast.java    # Broadcast record
-    │   │   │   ├── YouTubeAccount.java      # Channel metadata record
-    │   │   │   ├── YouTubeApiClient.java    # Official YouTube Data API v3 client
-    │   │   │   ├── StreamEligibilityDetector.java # Strategy interface
-    │   │   │   ├── TopicCategoryDetector.java # Category 20 + Wikipedia Minecraft topic detector
-    │   │   │   └── YouTubeService.java      # High-level YouTube query & caching service
-    │   │   ├── oauth/
-    │   │   │   ├── OAuthStateManager.java   # Cryptographic CSRF state manager (HMAC-SHA256, 5m TTL)
-    │   │   │   ├── GoogleOAuthClient.java   # Token exchange & refresh client
-    │   │   │   ├── OAuthCallbackServer.java # Embedded HTTP server for OAuth callback
-    │   │   │   └── OAuthService.java        # In-game OAuth flow orchestrator
-    │   │   ├── chat/
-    │   │   │   ├── IntervalMode.java        # CUSTOM, DEFAULT, RANDOM modes
-    │   │   │   ├── StreamerChatSettings.java # Per-streamer persistent configuration
-    │   │   │   ├── AnnouncementState.java   # Ephemeral stream state & cooldown tracking
-    │   │   │   ├── LiveStreamState.java     # Aggregated live state model
-    │   │   │   ├── AnnouncementFormatter.java # Adventure MiniMessage sanitizer & formatter
-    │   │   │   ├── AnnouncementScheduler.java # Centralized repeating Bukkit scheduler
-    │   │   │   └── LiveAnnouncementManager.java # Fair randomized selection & rotation engine
-    │   │   ├── stats/
-    │   │   │   └── PluginStatistics.java    # Session & daily announcement metrics
-    │   │   ├── storage/
-    │   │   │   ├── AccountRecord.java       # Linked account record
-    │   │   │   ├── AccountStorage.java      # Storage interface
-    │   │   │   ├── JsonAccountStorage.java  # Atomic JSON persistence (linked-accounts.json)
-    │   │   │   └── StreamerConfigStore.java # Persistent YAML streamer settings (streamer-settings.yml)
-    │   │   ├── nametag/
-    │   │   │   ├── NametagProvider.java     # Nametag provider abstraction
-    │   │   │   ├── PaperTeamNametagProvider.java # Non-destructive Scoreboard team manager
-    │   │   │   ├── PlaceholderProvider.java # PAPI-based provider
-    │   │   │   ├── CompositeNametagProvider.java # Composite multi-provider
-    │   │   │   ├── LiveIndicatorRenderer.java # Indicator rendering abstraction
-    │   │   │   └── StaticLiveIndicatorRenderer.java # MiniMessage static renderer
-    │   │   ├── player/
-    │   │   │   ├── LinkedPlayer.java        # Player data model (UUID primary key)
-    │   │   │   ├── PlayerLinkService.java   # Link management & caching
-    │   │   │   └── AllowedPlayersStorage.java # Persistent admin authorizations (allowed-players.yml)
-    │   │   ├── scheduler/
-    │   │   │   └── LiveStatusScheduler.java # 30s async polling & state transition engine
-    │   │   └── compatibility/
-    │   │       ├── PlaceholderApiHook.java  # Optional PAPI hook
-    │   │       └── LiveStatusExpansion.java # %livestatus_*% expansion
-    │   └── resources/
-    │       ├── plugin.yml                   # Paper plugin descriptor
-    │       └── config.yml                   # Default configuration
-    └── test/java/com/example/livestatus/
-        ├── LiveStreamAnnouncementTest.java  # Chat announcement & fair rotation tests
-        ├── StreamerConfigStoreTest.java     # YAML persistence & UUID preservation tests
-        ├── YoutubeCommandTest.java          # In-game streamer & admin command tests
-        ├── PluginStatisticsTest.java        # Session & daily metric tracking tests
-        ├── OAuthStateManagerTest.java       # CSRF protection & token binding tests
-        ├── TokenPersistenceTest.java        # Token storage & server restart tests
-        ├── MinecraftLiveDetectionTest.java  # Minecraft & non-gaming stream tests
-        ├── PluginConfigurationTest.java     # Config parsing & interval tests
-        ├── PlayerLinkServiceTest.java       # Admin authorization & unlink tests
-        ├── StatusTransitionTest.java        # State transition deduplication tests
-        ├── StaticLiveIndicatorRendererTest.java # MiniMessage rendering tests
-        ├── ScoreboardSuffixLogicTest.java   # Nametag prefix/suffix preservation tests
-        └── PlaceholderApiExpansionTest.java # PAPI expansion tests
+MCast/
+├── src/                                  # Minecraft Paper Plugin (Java 21)
+│   ├── main/java/com/example/livestatus/
+│   │   ├── LiveStatusPlugin.java         # Plugin lifecycle & DI container
+│   │   ├── mcast/                        # Centralized MCast API client & registration
+│   │   ├── nametag/                      # Scoreboard team & PAPI nametag providers
+│   │   ├── chat/                         # Fair rotation chat scheduler & formatters
+│   │   ├── youtube/                      # Stream detection & topic categorization
+│   │   ├── command/                      # In-game admin & player commands
+│   │   └── storage/                      # Persistent account & streamer settings
+│   └── main/resources/
+│       ├── plugin.yml                    # Paper plugin descriptor
+│       └── config.yml                    # Default plugin configuration
+├── backend/                              # Centralized Backend API (Node.js/TS)
+│   ├── src/
+│   │   ├── db/                           # Supabase / PostgreSQL schema & client
+│   │   ├── routes/                       # Express routes (OAuth, servers, streamers)
+│   │   ├── services/                     # YouTube live polling & token manager
+│   │   └── crypto/                       # AES-256-GCM encryption & HMAC CSRF
+│   ├── package.json
+│   └── Dockerfile
+├── website/                              # Web Portal (Next.js 16 + Tailwind CSS v4)
+│   ├── src/
+│   │   ├── app/                          # Next.js App Router (dashboard, auth, docs)
+│   │   └── components/                   # Live nametag preview & UI components
+│   └── package.json
+├── docs/                                 # Detailed documentation guides
+│   ├── SETUP.md                          # Server setup & configuration guide
+│   ├── ADMIN.md                          # Full command syntax & permissions
+│   ├── OAUTH.md                          # OAuth flow & security architecture
+│   └── COMPATIBILITY.md                  # Scoreboard, TAB & PAPI guide
+├── build.gradle.kts                      # Gradle build configuration
+├── render.yaml                           # Render cloud deployment blueprint
+└── README.md                             # Project overview
 ```
 
 ---
 
-## Installation (Single JAR)
+## Quick Start (Minecraft Server)
 
-1. **Build the project**:
-   ```powershell
-   # Windows
-   .\gradlew.bat build
+### 1. Build or Download the Plugin
 
-   # Linux / macOS
-   ./gradlew build
-   ```
-   *The single compiled JAR is generated at `build/libs/LiveStatus-1.0.0.jar`.*
+Build the Paper plugin JAR using the Gradle wrapper:
 
-2. **Copy the JAR into `plugins/`**:
-   ```text
-   plugins/
-   └── LiveStatus-1.0.0.jar
-   ```
+```powershell
+# Windows
+.\gradlew.bat build
 
-3. **Start the Paper server**:
-   Start Paper to generate the initial configuration files.
+# Linux / macOS
+./gradlew build
+```
 
-4. **Configure Google/YouTube OAuth credentials**:
-   Open `plugins/LiveStatus/config.yml` and enter your Google OAuth credentials:
-   ```yaml
-   youtube:
-     client-id: "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com"
-     client-secret: "YOUR_GOOGLE_CLIENT_SECRET"
-     redirect-uri: "http://localhost:8080/oauth/callback"
-     callback-port: 8080
-   ```
+The compiled plugin JAR is located at:
+```text
+build/libs/LiveStatus-1.0.0.jar
+```
 
-5. **Restart / reload the plugin**:
-   Run `/youtube reload` (or `/livestatus reload`) in the server console or in-game.
+### 2. Install on Paper Server
 
-6. **Admin authorizes player**:
+1. Drop `LiveStatus-1.0.0.jar` into your Minecraft server's `plugins/` directory.
+2. Start the server. The plugin automatically generates `plugins/LiveStatus/config.yml` pre-configured for the centralized MCast service.
+
+### 3. Link YouTube Account
+
+1. **Admin authorizes player**:
    ```text
    /youtube allow-link <player>
    ```
-
-7. **Player links their YouTube account**:
-   The player executes:
+2. **Player requests linking link in-game**:
    ```text
    /link youtube
    ```
-
-8. **Player authorizes in browser**:
-   The player clicks the `[ CONNECT YOUTUBE ]` link sent in Minecraft chat, signs into Google, and approves read-only YouTube access.
-
-9. **Automatic checking**:
-   The plugin automatically checks the channel every 30 seconds asynchronously.
-
-10. **LIVE tag displayed**:
-    When the player is live on Minecraft, their nametag automatically displays:
-    ```text
-    PokeHowlet LIVE
-    ```
+3. **Player completes authorization**:
+   The player clicks the `[ CONNECT YOUTUBE ]` link sent in Minecraft chat, signs in via [mcast.fun](https://mcast.fun), and authorizes read-only YouTube access.
+4. **Automatic LIVE badge**:
+   Whenever the player streams Minecraft live on YouTube, their in-game nametag automatically updates to display `LIVE`, and stream announcements are scheduled in chat.
 
 ---
 
-## Configuration (`config.yml`)
+## Plugin Configuration (`config.yml`)
 
 ```yaml
-youtube:
-  # Google Cloud OAuth 2.0 Credentials (Web Application)
-  client-id: "${YOUTUBE_CLIENT_ID}"
-  client-secret: "${YOUTUBE_CLIENT_SECRET}"
-  # Redirect URI configured in Google Cloud Console
-  redirect-uri: "http://localhost:8080/oauth/callback"
-  # Port for the plugin's embedded OAuth callback receiver
-  callback-port: 8080
-  callback-host: "0.0.0.0"
+# ==============================================================================
+# MCast LiveStatus - Centralized Minecraft Paper Plugin Configuration
+# Ready out of the box! Centralized OAuth is managed via https://mcast.fun
+# ==============================================================================
+
+mcast:
+  # Centralized MCast API endpoint
+  api-url: "https://api.mcast.fun"
+  # Web linking portal URL displayed to players
+  web-url: "https://mcast.fun"
   request-timeout-ms: 5000
 
+linking:
+  # When true, administrators must approve players with /youtube allow-link
+  require-admin-approval: true
+
 polling:
-  # Polling cycle interval in seconds
+  # YouTube status check interval in seconds (runs 100% asynchronously)
   interval-seconds: 30
 
 nametag:
@@ -217,80 +181,72 @@ security:
 
 compatibility:
   placeholderapi: true # Registers %livestatus_*% expansion
-
-debug:
-  enabled: false
 ```
 
 ---
 
-## In-Game Commands & Permissions
+## Commands & Permissions
 
-### Administrator Commands (`livestatus.admin` or `youtubelivetag.chat.admin`)
-- `/youtube allow-link <player>` (alias: `/livestatus allow-link`): Authorizes a player to connect their YouTube channel.
-- `/youtube revoke-link <player>`: Revokes linking authorization.
-- `/youtube status <player>`: Displays connection state, channel title, active broadcast, and stream title.
-- `/youtube unlink <player>`: Forcefully unlinks a player's YouTube account and removes their LIVE tag.
-- `/youtube reload`: Reloads `config.yml`, `allowed-players.yml`, and storage without restarting the server.
-- `/youtube help`: Shows command help.
+### Administrator Commands (`livestatus.admin` or `ytlive.admin`)
+* `/youtube allow-link <player>`: Authorizes a player to connect their YouTube channel.
+* `/youtube revoke-link <player>`: Revokes linking authorization.
+* `/youtube status <player>`: Displays connection state, channel title, active broadcast, and stream title.
+* `/youtube unlink <player>`: Forcefully unlinks a player's YouTube account and removes their LIVE tag.
+* `/youtube reload`: Reloads plugin configuration and local storage.
+* `/youtube help`: Displays command syntax help.
 
-#### Chat Announcement Admin Commands (`youtubelivetag.chat.admin` / `livestatus.chat.admin`):
-- `/youtube chat admin status`: Displays global scheduler diagnostics, eligible streamers, active livestreams, and statistics.
-- `/youtube chat admin on`: Globally enables chat announcements server-wide.
-- `/youtube chat admin off`: Globally disables chat announcements server-wide.
-- `/youtube chat admin enable <player>`: Enables announcements for a specific streamer.
-- `/youtube chat admin disable <player>`: Administratively disables announcements for a specific streamer (overriding player settings).
-- `/youtube chat admin interval <player> <minutes|random>`: Overrides a streamer's announcement cooldown.
-- `/youtube chat admin title <player> <text>`: Overrides a streamer's custom announcement text.
-- `/youtube chat admin title clear <player>`: Clears a streamer's custom title (restores YouTube stream title).
+#### Announcement Admin Controls (`youtubelivetag.chat.admin`):
+* `/youtube chat admin status`: Displays global scheduler diagnostics and active streamers.
+* `/youtube chat admin on|off`: Globally toggles live stream chat announcements server-wide.
+* `/youtube chat admin enable|disable <player>`: Manages announcements for an individual streamer.
+* `/youtube chat admin interval <player> <minutes|random>`: Overrides announcement cooldown.
+* `/youtube chat admin title <player> <text>`: Overrides streamer's broadcast announcement text.
 
-### Streamer Commands (`youtubelivetag.chat` / `livestatus.chat`)
-Authorized and linked streamers can manage their own automated broadcast announcements:
-- `/youtube chat` / `/youtube chat status`: Displays your current announcement status, cooldown mode, interval, and custom title.
-- `/youtube chat on`: Enables your chat announcements.
-- `/youtube chat off`: Disables your chat announcements (unless restricted by admin `streamer-can-disable: false`).
-- `/youtube chat title <text>`: Sets a custom announcement message (sanitized against injection).
-- `/youtube chat title clear`: Restores dynamic YouTube live stream title fallback.
-- `/youtube chat interval <minutes>`: Sets a custom minimum cooldown interval between announcements (respects server minimum).
-- `/youtube chat interval random`: Configures a random interval between each announcement (between server-configured min/max).
-- `/youtube chat interval default`: Resets cooldown interval to the server default.
+### Streamer Commands (`livestatus.chat` or `youtubelivetag.chat`)
+* `/youtube chat` / `/youtube chat status`: Displays your announcement status, cooldown, and title.
+* `/youtube chat on|off`: Toggles your own broadcast announcements.
+* `/youtube chat title <text>`: Sets a custom announcement message.
+* `/youtube chat title clear`: Restores the dynamic YouTube stream title.
+* `/youtube chat interval <minutes|random|default>`: Customizes announcement cooldown timing.
 
 ### Player Commands (`livestatus.link`)
-- `/link youtube`: Generates a one-time OAuth link to connect YouTube (requires admin authorization).
-- `/link youtube unlink`: Unlinks the player's connected account.
-
-### Optional Permissions
-- `youtubelivetag.chat.bypass` (alias: `livestatus.chat.bypass`): Optional permission allowing staff or specific players to bypass receiving automated live announcements.
+* `/link youtube`: Generates a secure one-time link to connect your YouTube channel.
+* `/link youtube unlink`: Disconnects your connected YouTube channel.
 
 ---
 
-## API Capabilities & Official YouTube Limitations
+## Development & Deployment
 
-1. **Game Title Selection in YouTube Studio**:
-   - YouTube's public Data API v3 does **not** expose a dedicated standalone string property for the internal "Game Title" selected in YouTube Studio Live Control Room.
-   - The plugin evaluates `categoryId == "20"` (Gaming) and matches canonical Freebase/Wikipedia Knowledge Graph topic categories (`https://en.wikipedia.org/wiki/Minecraft`).
-   - If a creator streams *GTA V*, *Fortnite*, or *Just Chatting*, the plugin identifies this as `LIVE_NOT_MINECRAFT` and suppresses the `LIVE` indicator.
-2. **Members-Only Broadcasts**:
-   - YouTube Data API v3 does not provide a public `membersOnly` boolean flag. Private and inaccessible broadcasts safely fail closed (`UNKNOWN`), preventing false-positive indicators.
-3. **API Quotas**:
-   - Default YouTube API quota is 10,000 units/day. The plugin's in-memory caching (30s TTL) and batch query engine prevent quota exhaustion.
+### Backend Service (`backend/`)
+```bash
+cd backend
+npm install
+npm run dev     # Starts development server with tsx
+npm run build   # Compiles TypeScript to dist/
+npm run test    # Runs Vitest unit & integration tests
+```
+*Automated deployment configuration is available in `render.yaml` for Render.*
+
+### Web Portal (`website/`)
+```bash
+cd website
+npm install
+npm run dev     # Runs Next.js local development server (port 3000)
+npm run build   # Builds production Next.js bundle with Turbopack
+```
+*Deploy to Vercel by linking the `Rockybhaiff94/MCast` repository with root directory set to `website`.*
 
 ---
 
-## Future Extensibility: Animated LIVE Indicators
+## Documentation
 
-The visual indicator layer is abstracted behind `LiveIndicatorRenderer`:
-- **Current Version**: Uses `StaticLiveIndicatorRenderer` (renders styled text like `<red><bold>LIVE</bold></red>`).
-- **Future Animated Version**:
-  1. Create `AnimatedLiveIndicatorRenderer` implementing `LiveIndicatorRenderer`.
-  2. Maintain frame cycles (e.g. `● LIVE` ➔ `○ LIVE`).
-  3. Hook into a scheduled task timer to tick frames without touching YouTube API polling or OAuth code.
+* [Server Installation & Quick Start](docs/SETUP.md)
+* [Commands & Permissions Reference](docs/ADMIN.md)
+* [OAuth & Security Architecture](docs/OAUTH.md)
+* [Nametag & Scoreboard Compatibility](docs/COMPATIBILITY.md)
 
 ---
 
-## Detailed Documentation Links
+## License
 
-- [Setup & Server Guide](docs/SETUP.md)
-- [Google Cloud & OAuth 2.0 Guide](docs/OAUTH.md)
-- [Administrator & Command Reference](docs/ADMIN.md)
-- [Nametag Compatibility & Scoreboard Guide](docs/COMPATIBILITY.md)
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

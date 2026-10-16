@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
 import { ExternalLink, RefreshCw, Radio, CheckCircle2, AlertCircle, Gamepad2 } from 'lucide-react';
 
 function YouTubeIcon({ className = "w-4 h-4 text-red-500" }: { className?: string }) {
@@ -231,7 +230,7 @@ export default function ConnectedChannelCard({
 
           {liveStatus?.title && (
             <h4 className="text-white font-semibold text-sm mb-3 line-clamp-2">
-              "{liveStatus.title}"
+              &ldquo;{liveStatus.title}&rdquo;
             </h4>
           )}
 

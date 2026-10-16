@@ -19,35 +19,35 @@ const DOCS: DocCard[] = [
     icon: BookOpen,
     title: "Installation Guide",
     description: "Step-by-step server setup and configuration walkthrough.",
-    href: "https://github.com/PokeHowl/LiveStatus/blob/main/docs/SETUP.md",
+    href: "https://github.com/Rockybhaiff94/MCast/blob/main/docs/SETUP.md",
   },
   {
     icon: KeyRound,
     title: "Centralized OAuth",
     description:
       "All Google OAuth credentials are managed centrally by MCast — zero setup on your server.",
-    href: "https://github.com/Rockybhaiff94/LiveStatus/blob/main/docs/OAUTH.md",
+    href: "https://github.com/Rockybhaiff94/MCast/blob/main/docs/OAUTH.md",
   },
   {
     icon: Link2,
     title: "YouTube Account Linking",
     description:
       "How players link their YouTube channel and authorize the plugin.",
-    href: "https://github.com/PokeHowl/LiveStatus/blob/main/docs/OAUTH.md",
+    href: "https://github.com/Rockybhaiff94/MCast/blob/main/docs/OAUTH.md",
   },
   {
     icon: Terminal,
     title: "Commands & Permissions",
     description:
       "Full reference for admin, streamer, and player commands.",
-    href: "https://github.com/PokeHowl/LiveStatus/blob/main/docs/ADMIN.md",
+    href: "https://github.com/Rockybhaiff94/MCast/blob/main/docs/ADMIN.md",
   },
   {
     icon: AlertTriangle,
     title: "Troubleshooting",
     description:
       "Common issues, API quotas, and compatibility with other plugins.",
-    href: "https://github.com/PokeHowl/LiveStatus/blob/main/docs/COMPATIBILITY.md",
+    href: "https://github.com/Rockybhaiff94/MCast/blob/main/docs/COMPATIBILITY.md",
   },
 ];
 

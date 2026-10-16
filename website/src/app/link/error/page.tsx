@@ -95,8 +95,17 @@ export default function LinkErrorPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#262626] bg-[#080808] py-4 text-center text-xs text-[#737373]">
-        MCast LiveStatus • Centralized Minecraft Broadcast Synchronization • mcast.fun
+      <footer className="border-t border-[#262626] bg-[#080808] py-4 text-center text-xs text-[#737373] space-y-1.5">
+        <p>MCast LiveStatus • Centralized Minecraft Broadcast Synchronization • mcast.fun</p>
+        <div className="flex justify-center items-center gap-4 text-[11px] text-[#A3A3A3]">
+          <Link href="/privacy-policy" className="hover:text-[#FF7A00] transition-colors">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link href="/terms-of-service" className="hover:text-[#FF7A00] transition-colors">
+            Terms of Service
+          </Link>
+        </div>
       </footer>
     </div>
   );
