@@ -48,7 +48,7 @@ npm run start
 
 When deploying this monorepo to Vercel:
 
-1. Connect the GitHub repository `Rockybhaiff94/LiveStatus`.
+1. Connect the GitHub repository `Rockybhaiff94/MCast`.
 2. In **Project Settings** → **General** → **Root Directory**, set:
    ```text
    website

@@ -34,7 +34,7 @@ export default function Footer() {
               </li>
               <li>
                 <a
-                  href="https://github.com/PokeHowl/LiveStatus"
+                  href="https://github.com/Rockybhaiff94/MCast"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-accent transition-colors"
@@ -60,12 +60,12 @@ export default function Footer() {
             <h3 className="text-sm font-semibold mb-3">Legal</h3>
             <ul className="space-y-1.5 text-xs text-text-secondary mb-3">
               <li>
-                <Link href="/privacy" className="hover:text-accent transition-colors">
+                <Link href="/privacy-policy" className="hover:text-accent transition-colors">
                   Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="hover:text-accent transition-colors">
+                <Link href="/terms-of-service" className="hover:text-accent transition-colors">
                   Terms of Service
                 </Link>
               </li>
@@ -83,11 +83,11 @@ export default function Footer() {
 
         <div className="mt-10 pt-6 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-xs text-text-secondary">
-            &copy; 2025 MCast.fun. All rights reserved.
+            &copy; 2026 MCast.fun. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
             <a
-              href="https://github.com/PokeHowl/LiveStatus"
+              href="https://github.com/Rockybhaiff94/MCast"
               target="_blank"
               rel="noopener noreferrer"
               className="text-text-secondary hover:text-accent transition-colors"

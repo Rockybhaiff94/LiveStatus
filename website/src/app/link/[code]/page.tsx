@@ -44,7 +44,7 @@ function PlayerLinkContent() {
       if (data.seconds_remaining) {
         setTimeLeft(data.seconds_remaining);
       }
-    } catch (err: any) {
+    } catch {
       setSession({
         valid: false,
         error: 'Unable to reach the MCast verification service. Please try again shortly.',
@@ -236,8 +236,24 @@ function PlayerLinkContent() {
         <span>Connect with Google & YouTube</span>
       </a>
 
-      <p className="text-[11px] text-center text-[#737373] mt-4">
-        By continuing, you agree to the MCast Terms of Service and YouTube Terms of Service.
+      <p className="text-[11px] text-center text-[#737373] mt-4 leading-relaxed">
+        By continuing, you agree to the{" "}
+        <Link href="/terms-of-service" target="_blank" className="text-[#FF7A00] hover:underline">
+          MCast Terms of Service
+        </Link>
+        ,{" "}
+        <Link href="/privacy-policy" target="_blank" className="text-[#FF7A00] hover:underline">
+          Privacy Policy
+        </Link>
+        , and{" "}
+        <a
+          href="https://www.youtube.com/t/terms"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[#FF7A00] hover:underline"
+        >
+          YouTube Terms of Service
+        </a>.
       </p>
     </div>
   );
@@ -270,8 +286,17 @@ export default function PlayerLinkPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[#262626] bg-[#080808] py-4 text-center text-xs text-[#737373]">
-        MCast LiveStatus • Centralized Minecraft Broadcast Synchronization • mcast.fun
+      <footer className="border-t border-[#262626] bg-[#080808] py-4 text-center text-xs text-[#737373] space-y-1.5">
+        <p>MCast LiveStatus • Centralized Minecraft Broadcast Synchronization • mcast.fun</p>
+        <div className="flex justify-center items-center gap-4 text-[11px] text-[#A3A3A3]">
+          <Link href="/privacy-policy" className="hover:text-[#FF7A00] transition-colors">
+            Privacy Policy
+          </Link>
+          <span>•</span>
+          <Link href="/terms-of-service" className="hover:text-[#FF7A00] transition-colors">
+            Terms of Service
+          </Link>
+        </div>
       </footer>
     </div>
   );
