@@ -12,6 +12,21 @@ mcast:
   # Maximum time to wait for MCast API HTTP responses (in milliseconds).
   request-timeout-ms: 5000
 
+# ==============================================================================
+# MCast Administrator Configuration
+# ==============================================================================
+admin:
+  # true (recommended default for small private SMPs): Minecraft server operators (OPs)
+  # automatically qualify for MCast administrator privileges.
+  # false (recommended for large public/modded servers): Disables automatic OP access.
+  # Only explicitly authorized MCast administrators have admin access.
+  op-default-admin: true
+
+  # Explicit MCast administrator accounts.
+  # Supports Java and Bedrock player identities.
+  # Use registered in-game usernames or UUIDs where supported.
+  admins: []
+
 linking:
   # When true (recommended default), administrators must explicitly approve
   # players using /youtube allow-link <player> before they can connect their channel.

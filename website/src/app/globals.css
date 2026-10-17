@@ -398,6 +398,16 @@ h2 { font-size: clamp(2rem, 4vw, 3.25rem); line-height: 1.04; margin: 15px 0 14p
 .copy-btn.copied svg { transform: scale(1.1); }
 .copy-btn svg { width: 15px; height: 15px; transition: transform var(--motion-fast) var(--ease-out); }
 .command-note { color: #8e8d85; text-align: center; margin: 17px auto 0; font-size: .78rem; max-width: 780px; }
+.command-toggle-wrap { display: flex; justify-content: center; margin-top: 24px; }
+.command-toggle-btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; font-size: .83rem; font-weight: 800; cursor: pointer; border-radius: 10px; }
+.toggle-caret { transition: transform var(--motion-normal) var(--ease-spring); }
+.toggle-caret.rotated { transform: rotate(180deg); }
+.command-row-expand { animation: cmdExpand 0.28s var(--ease-out) both; }
+@keyframes cmdExpand {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.command-perm { display: inline-block; font-size: .67rem; font-weight: 700; color: #a5a49c; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); padding: 2px 7px; border-radius: 4px; margin-top: 6px; }
 
 .setup { padding-top: 95px; }
 .setup-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; }

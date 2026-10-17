@@ -8,21 +8,27 @@ softdepend:
   - PlaceholderAPI
 
 commands:
-  youtube:
-    description: LiveStatus and YouTube Live stream commands
-    usage: /youtube <chat|allow-link|revoke-link|status|unlink|reload|panel|help>
-    aliases: [yt, livestatus]
-  ytlive:
-    description: LiveStatus Web Control Panel and administration commands
-    permission: ytlive.admin
-    usage: /ytlive <panel [revoke]|status|reload|help>
-    aliases: [ytpanel, ytlivepanel]
+  mcast:
+    description: Core MCast command for YouTube linking, status, and administration
+    usage: /mcast <link|unlink|status|info|reload|admin|set|authorize|remove|user|youtuber|help>
+    aliases: [youtube, yt, livestatus, ytlive]
   link:
     description: Link or unlink your YouTube account
     permission: livestatus.link
     usage: /link <youtube> [unlink]
 
 permissions:
+  mcast.admin:
+    description: Grants full administrative access to MCast and LiveStatus
+    default: op
+    children:
+      livestatus.admin: true
+      ytlive.admin: true
+  mcast.link:
+    description: Grants permission to link a YouTube account
+    default: true
+    children:
+      livestatus.link: true
   ytlive.admin:
     description: Grants full administrative access to LiveStatus and Web Panel
     default: op
