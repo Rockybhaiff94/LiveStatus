@@ -2,90 +2,69 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, Download } from "lucide-react";
-
-const NAV_LINKS = [
-  { label: "Home", href: "/" },
-  { label: "Features", href: "/#features" },
-  { label: "Installation", href: "/#how-it-works" },
-  { label: "Documentation", href: "/#docs" },
-  { label: "Dashboard", href: "/dashboard" },
-] as const;
 
 export default function Header() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 bg-bg-primary/90 backdrop-blur-md border-b border-border">
-      <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-        {/* Logo */}
-        <Link href="/" className="flex items-center gap-1 text-xl font-bold">
-          <span className="text-accent">M</span>
-          <span>Cast</span>
-          <span className="text-text-secondary text-sm font-normal">.fun</span>
+    <header className="topbar">
+      <div className="wrap nav">
+        <Link className="brand" href="/" aria-label="MCast home">
+          <img src="/assets/mcast-logo.png" alt="MCast" />
         </Link>
-
-        {/* Desktop nav */}
-        <ul className="hidden md:flex items-center gap-8">
-          {NAV_LINKS.map((l) => (
-            <li key={l.label}>
-              <Link
-                href={l.href}
-                className="text-sm text-text-secondary hover:text-accent transition-colors duration-200"
-              >
-                {l.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-
-        {/* CTA */}
-        <Link
-          href="#download"
-          className="hidden md:inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-black hover:bg-accent-hover transition-colors duration-200"
-        >
-          <Download size={16} />
-          Download Plugin
-        </Link>
-
-        {/* Mobile toggle */}
-        <button
-          onClick={() => setOpen(!open)}
-          className="md:hidden text-text-secondary hover:text-accent transition-colors"
-          aria-label="Toggle menu"
-        >
-          {open ? <X size={24} /> : <Menu size={24} />}
-        </button>
-      </nav>
-
-      {/* Mobile menu */}
-      {open && (
-        <div className="md:hidden bg-bg-secondary/95 backdrop-blur-md border-t border-border">
-          <ul className="flex flex-col gap-1 px-6 py-4">
-            {NAV_LINKS.map((l) => (
-              <li key={l.label}>
-                <Link
-                  href={l.href}
-                  onClick={() => setOpen(false)}
-                  className="block py-2 text-sm text-text-secondary hover:text-accent transition-colors"
-                >
-                  {l.label}
-                </Link>
-              </li>
-            ))}
-            <li>
-              <Link
-                href="#download"
-                onClick={() => setOpen(false)}
-                className="mt-2 inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-black hover:bg-accent-hover transition-colors"
-              >
-                <Download size={16} />
-                Download Plugin
-              </Link>
-            </li>
-          </ul>
+        <nav className={`nav-links ${open ? "open" : ""}`} id="nav-links" aria-label="Main navigation">
+          <Link href="/#features" onClick={() => setOpen(false)}>
+            Features
+          </Link>
+          <Link href="/#how-it-works" onClick={() => setOpen(false)}>
+            How it works
+          </Link>
+          <Link href="/#commands" onClick={() => setOpen(false)}>
+            Commands
+          </Link>
+          <Link href="/#setup" onClick={() => setOpen(false)}>
+            Setup
+          </Link>
+          <Link href="/#faq" onClick={() => setOpen(false)}>
+            FAQ
+          </Link>
+        </nav>
+        <div className="nav-actions">
+          <Link className="btn btn-primary" href="/#download">
+            Get MCast{" "}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 3v12m-5-5 5 5 5-5" />
+              <path d="M5 16v4h14v-4" />
+            </svg>
+          </Link>
+          <button
+            className="menu-toggle"
+            id="menu-toggle"
+            aria-label={open ? "Close navigation" : "Open navigation"}
+            aria-controls="nav-links"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
         </div>
-      )}
+      </div>
     </header>
   );
 }

@@ -37,3 +37,8 @@ client_secret*.json
 node_modules/
 dist/
 .next/
+
+# Design & reference assets
+MCast-Website-UI/
+Minimalist Yellow M CAST Logo.png
+wallpaper_minecraft_bedrock_edition_1920x1080.png
