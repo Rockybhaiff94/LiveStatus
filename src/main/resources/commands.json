@@ -1,0 +1,156 @@
+[
+  {
+    "id": "link",
+    "syntax": "/mcast link",
+    "display": "/mcast link",
+    "copyText": "/mcast link",
+    "category": "player",
+    "description": "Start YouTube account linking flow",
+    "permission": "mcast.link",
+    "implemented": true,
+    "initialVisible": true
+  },
+  {
+    "id": "status",
+    "syntax": "/mcast status",
+    "display": "/mcast status",
+    "copyText": "/mcast status",
+    "category": "player",
+    "description": "Check your current stream or linking status",
+    "permission": "mcast.link",
+    "implemented": true,
+    "initialVisible": true
+  },
+  {
+    "id": "unlink",
+    "syntax": "/mcast unlink",
+    "display": "/mcast unlink",
+    "copyText": "/mcast unlink",
+    "category": "player",
+    "description": "Remove your linked YouTube channel",
+    "permission": "mcast.link",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "info",
+    "syntax": "/mcast info <player>",
+    "display": "/mcast info <player>",
+    "copyText": "/mcast info <player>",
+    "category": "player",
+    "description": "View another player's MCast stream info",
+    "permission": "mcast.link",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "reload",
+    "syntax": "/mcast reload",
+    "display": "/mcast reload",
+    "copyText": "/mcast reload",
+    "category": "admin",
+    "description": "Reload the plugin configuration safely",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": true
+  },
+  {
+    "id": "admin-set",
+    "syntax": "/mcast admin set <player> <url>",
+    "display": "/mcast admin set <player> <url>",
+    "copyText": "/mcast admin set <player> <url>",
+    "category": "admin",
+    "description": "Administratively assign a YouTube channel",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": true
+  },
+  {
+    "id": "admin-remove",
+    "syntax": "/mcast admin remove <player>",
+    "display": "/mcast admin remove <player>",
+    "copyText": "/mcast admin remove <player>",
+    "category": "admin",
+    "description": "Remove a player's assigned channel link",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "admin-grant",
+    "syntax": "/mcast admin grant <player>",
+    "display": "/mcast admin grant <player>",
+    "copyText": "/mcast admin grant <player>",
+    "category": "admin",
+    "description": "Grant MCast administrator access to a player",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "admin-revoke",
+    "syntax": "/mcast admin revoke <player>",
+    "display": "/mcast admin revoke <player>",
+    "copyText": "/mcast admin revoke <player>",
+    "category": "admin",
+    "description": "Revoke MCast administrator access from a player",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "set-announcement",
+    "syntax": "/mcast set announcement <message>",
+    "display": "/mcast set announcement <message>",
+    "copyText": "/mcast set announcement <message>",
+    "category": "admin",
+    "description": "Set live stream chat announcement template",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "authorize-user",
+    "syntax": "/mcast authorize user <player>",
+    "display": "/mcast authorize user <player>",
+    "copyText": "/mcast authorize user <player>",
+    "category": "admin",
+    "description": "Authorize a player to link their YouTube channel",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "remove-user",
+    "syntax": "/mcast remove user <player>",
+    "display": "/mcast remove user <player>",
+    "copyText": "/mcast remove user <player>",
+    "category": "admin",
+    "description": "Revoke a player's linking authorization",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "user-list",
+    "syntax": "/mcast user list",
+    "display": "/mcast user list",
+    "copyText": "/mcast user list",
+    "category": "admin",
+    "description": "List all administrator-authorized players",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  },
+  {
+    "id": "youtuber-list",
+    "syntax": "/mcast youtuber list",
+    "display": "/mcast youtuber list",
+    "copyText": "/mcast youtuber list",
+    "category": "admin",
+    "description": "List all players with linked YouTube channels",
+    "permission": "mcast.admin",
+    "implemented": true,
+    "initialVisible": false
+  }
+]

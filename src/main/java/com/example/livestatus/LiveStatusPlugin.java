@@ -1,10 +1,12 @@
 package com.example.livestatus;
 
+import com.example.livestatus.admin.AdminAuthService;
+import com.example.livestatus.admin.AdminStorage;
 import com.example.livestatus.chat.AnnouncementFormatter;
 import com.example.livestatus.chat.AnnouncementScheduler;
 import com.example.livestatus.chat.LiveAnnouncementManager;
 import com.example.livestatus.command.LinkYoutubeCommand;
-import com.example.livestatus.command.YoutubeCommand;
+import com.example.livestatus.command.MCastCommand;
 import com.example.livestatus.compatibility.PlaceholderApiHook;
 import com.example.livestatus.config.PluginConfig;
 import com.example.livestatus.mcast.MCastApiClient;
@@ -58,6 +60,8 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     private StreamerConfigStore streamerConfigStore;
     private PluginStatistics statistics;
     private PlayerLinkService linkService;
+    private AdminStorage adminStorage;
+    private AdminAuthService adminAuthService;
 
     // Web Panel & Extended Systems
     private LiveHistoryStorage liveHistoryStorage;
@@ -104,6 +108,8 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.streamerConfigStore = new StreamerConfigStore(getDataFolder(), getLogger());
         this.statistics = new PluginStatistics();
         this.linkService = new PlayerLinkService(allowedStorage, accountStorage);
+        this.adminStorage = new AdminStorage(getDataFolder(), getLogger());
+        this.adminAuthService = new AdminAuthService(pluginConfig, adminStorage, getLogger());
 
         // Extended Systems: History, Server Links, Premium, Web Security & Audit
         this.liveHistoryStorage = new LiveHistoryStorage(getDataFolder(), getLogger());
@@ -303,18 +309,31 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
     }
 
     private void registerCommands() {
+        MCastCommand mcastHandler = new MCastCommand(
+                this,
+                linkService,
+                youTubeService,
+                oAuthService,
+                announcementManager,
+                streamerConfigStore
+        );
+
+        PluginCommand mcastCmd = getCommand("mcast");
+        if (mcastCmd != null) {
+            mcastCmd.setExecutor(mcastHandler);
+            mcastCmd.setTabCompleter(mcastHandler);
+        }
+
         PluginCommand ytCmd = getCommand("youtube");
         if (ytCmd != null) {
-            YoutubeCommand handler = new YoutubeCommand(this, linkService, youTubeService, announcementManager, streamerConfigStore);
-            ytCmd.setExecutor(handler);
-            ytCmd.setTabCompleter(handler);
+            ytCmd.setExecutor(mcastHandler);
+            ytCmd.setTabCompleter(mcastHandler);
         }
 
         PluginCommand ytliveCmd = getCommand("ytlive");
         if (ytliveCmd != null) {
-            YoutubeCommand handler = new YoutubeCommand(this, linkService, youTubeService, announcementManager, streamerConfigStore);
-            ytliveCmd.setExecutor(handler);
-            ytliveCmd.setTabCompleter(handler);
+            ytliveCmd.setExecutor(mcastHandler);
+            ytliveCmd.setTabCompleter(mcastHandler);
         }
 
         PluginCommand linkCmd = getCommand("link");
@@ -346,6 +365,12 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
         this.pluginConfig = new PluginConfig(getConfig());
         this.allowedStorage.load();
         this.accountStorage.load();
+        if (adminStorage != null) {
+            this.adminStorage.load();
+        }
+        if (adminAuthService != null) {
+            this.adminAuthService.updateConfig(this.pluginConfig);
+        }
         if (streamerConfigStore != null) {
             this.streamerConfigStore.load();
         }
@@ -476,6 +501,14 @@ public class LiveStatusPlugin extends JavaPlugin implements Listener {
 
     public MCastRegistrationService getRegistrationService() {
         return registrationService;
+    }
+
+    public AdminStorage getAdminStorage() {
+        return adminStorage;
+    }
+
+    public AdminAuthService getAdminAuthService() {
+        return adminAuthService;
     }
 }
 

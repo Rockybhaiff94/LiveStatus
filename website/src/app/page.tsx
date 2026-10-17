@@ -2,11 +2,25 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import commandsData from "@/data/commands.json";
+
+interface CommandItem {
+  id: string;
+  syntax: string;
+  display: string;
+  copyText: string;
+  category: "player" | "admin";
+  description: string;
+  permission: string;
+  implemented: boolean;
+  initialVisible: boolean;
+}
 
 export default function Home() {
   const [navOpen, setNavOpen] = useState(false);
   const [openFaq, setOpenFaq] = useState<{ [key: number]: boolean }>({});
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
+  const [showAllCommands, setShowAllCommands] = useState(false);
   const copyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -583,7 +597,7 @@ export default function Home() {
               </h2>
               <p>Quick examples of the player and admin actions the MCast experience can expose.</p>
             </div>
-            <div className="command-layout reveal-stagger">
+            <div className="command-layout reveal-stagger" id="commands-layout">
               {/* Player Commands */}
               <div className="command-panel">
                 <div className="command-panel-head">
@@ -599,34 +613,22 @@ export default function Home() {
                   </svg>
                   Player commands
                 </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast link</code>
-                    <small>Link your YouTube channel</small>
+                {(showAllCommands
+                  ? (commandsData as CommandItem[]).filter((c) => c.category === "player")
+                  : (commandsData as CommandItem[]).filter((c) => c.category === "player" && c.initialVisible)
+                ).map((cmd) => (
+                  <div
+                    key={cmd.id}
+                    className={`command-row ${!cmd.initialVisible ? "command-row-expand" : ""}`}
+                  >
+                    <div className="command-main">
+                      <code>{cmd.display}</code>
+                      <small>{cmd.description}</small>
+                      <span className="command-perm">{cmd.permission}</span>
+                    </div>
+                    {renderCopyBtn(cmd.copyText, `Copy ${cmd.syntax}`)}
                   </div>
-                  {renderCopyBtn("/mcast link", "Copy /mcast link")}
-                </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast unlink</code>
-                    <small>Remove your linked channel</small>
-                  </div>
-                  {renderCopyBtn("/mcast unlink", "Copy /mcast unlink")}
-                </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast status</code>
-                    <small>Check your current stream status</small>
-                  </div>
-                  {renderCopyBtn("/mcast status", "Copy /mcast status")}
-                </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast info &lt;player&gt;</code>
-                    <small>View another player&apos;s MCast info</small>
-                  </div>
-                  {renderCopyBtn("/mcast info <player>", "Copy /mcast info player")}
-                </div>
+                ))}
               </div>
 
               {/* Admin Commands */}
@@ -645,31 +647,53 @@ export default function Home() {
                   </svg>
                   Admin commands
                 </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast reload</code>
-                    <small>Reload the plugin configuration</small>
+                {(showAllCommands
+                  ? (commandsData as CommandItem[]).filter((c) => c.category === "admin")
+                  : (commandsData as CommandItem[]).filter((c) => c.category === "admin" && c.initialVisible)
+                ).map((cmd) => (
+                  <div
+                    key={cmd.id}
+                    className={`command-row ${!cmd.initialVisible ? "command-row-expand" : ""}`}
+                  >
+                    <div className="command-main">
+                      <code>{cmd.display}</code>
+                      <small>{cmd.description}</small>
+                      <span className="command-perm">{cmd.permission}</span>
+                    </div>
+                    {renderCopyBtn(cmd.copyText, `Copy ${cmd.syntax}`)}
                   </div>
-                  {renderCopyBtn("/mcast reload", "Copy /mcast reload")}
-                </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast admin set &lt;player&gt; &lt;url&gt;</code>
-                    <small>Assign a channel to a player</small>
-                  </div>
-                  {renderCopyBtn("/mcast admin set <player> <url>", "Copy admin set command")}
-                </div>
-                <div className="command-row">
-                  <div className="command-main">
-                    <code>/mcast admin remove &lt;player&gt;</code>
-                    <small>Remove a player&apos;s channel link</small>
-                  </div>
-                  {renderCopyBtn("/mcast admin remove <player>", "Copy admin remove command")}
-                </div>
+                ))}
               </div>
             </div>
+
+            <div className="command-toggle-wrap">
+              <button
+                type="button"
+                className="btn btn-outline command-toggle-btn"
+                onClick={() => setShowAllCommands((prev) => !prev)}
+                aria-expanded={showAllCommands}
+                aria-controls="commands-layout"
+              >
+                <span>{showAllCommands ? "Show fewer" : `Show all commands (${commandsData.length})`}</span>
+                <svg
+                  className={`toggle-caret ${showAllCommands ? "rotated" : ""}`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+
             <p className="command-note">
-              Command reference shown as editable starter content. Confirm the exact syntax and permission nodes against your current MCast build before publishing.
+              Authoritative MCast command reference synchronized with plugin release. Administrative commands require operator status or the corresponding permission node.
             </p>
           </div>
         </section>

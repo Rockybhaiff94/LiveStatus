@@ -69,14 +69,22 @@ public class PluginConfig {
     private final boolean premiumEnabled;
     private final String paymentWebhookSecret;
 
+    // MCast Administrator Configuration
+    private final boolean opDefaultAdmin;
+    private final java.util.List<String> configAdmins;
+
     // Dynamically updatable settings
     private volatile String liveTextMutable;
     private volatile String liveFormatMutable;
     private volatile int pollingIntervalSecondsMutable;
     private volatile int globalMinimumGapSecondsMutable;
     private volatile int defaultIntervalMinutesMutable;
+    private volatile java.util.List<String> announcementMessageLinesMutable;
 
     public PluginConfig(FileConfiguration config) {
+        this.opDefaultAdmin = config.getBoolean("admin.op-default-admin", true);
+        this.configAdmins = config.getStringList("admin.admins");
+
         this.mcastApiUrl = resolveEnv(config.getString("mcast.api-url", "https://api.mcast.fun"));
         this.mcastWebUrl = resolveEnv(config.getString("mcast.web-url", "https://mcast.fun"));
 
@@ -315,7 +323,13 @@ public class PluginConfig {
     }
 
     public java.util.List<String> getAnnouncementMessageLines() {
-        return announcementMessageLines;
+        return announcementMessageLinesMutable != null ? announcementMessageLinesMutable : announcementMessageLines;
+    }
+
+    public void setAnnouncementMessageLines(java.util.List<String> lines) {
+        if (lines != null && !lines.isEmpty()) {
+            this.announcementMessageLinesMutable = java.util.List.copyOf(lines);
+        }
     }
 
     public boolean isAdminChatEnabled() {
@@ -394,6 +408,14 @@ public class PluginConfig {
         if (minutes >= 1) {
             this.defaultIntervalMinutesMutable = minutes;
         }
+    }
+
+    public boolean isOpDefaultAdmin() {
+        return opDefaultAdmin;
+    }
+
+    public java.util.List<String> getConfigAdmins() {
+        return configAdmins != null ? java.util.Collections.unmodifiableList(configAdmins) : java.util.Collections.emptyList();
     }
 }
 
